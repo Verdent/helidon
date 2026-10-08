@@ -110,7 +110,7 @@ class KeycloakTlsCertificateIdentityIT {
                                     .signingAlgorithm("RS256"));
                         }
                     })
-                    .cookies(cookies -> cookies.protection(protection -> protection.password("keycloak-tls-test-password")))
+                    .cookies(cookies -> cookies.password("keycloak-tls-test-password"))
                     .buildPrototype();
             OidcProviderConfig providerConfig = OidcProviderConfig.builder()
                     .putTenant("default", tenant)

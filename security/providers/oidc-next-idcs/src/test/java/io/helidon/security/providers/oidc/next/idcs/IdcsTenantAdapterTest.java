@@ -50,7 +50,7 @@ class IdcsTenantAdapterTest {
                 .clientSecret("idcs-secret")
                 .endpoints(endpoints -> endpoints.userInfoEndpointUri(URI.create("https://idcs-one.identity.oraclecloud.com/custom")))
                 .authorizationCode(code -> code.redirectionEndpointUri(URI.create("/oidc/idcs-callback")))
-                .cookies(cookies -> cookies.protection(protection -> protection.password(COOKIE_PASSWORD)))
+                .cookies(cookies -> cookies.password(COOKIE_PASSWORD))
                 .buildPrototype();
 
         assertThat(tenant.issuer().orElseThrow(), is("https://identity.oraclecloud.com/"));
@@ -125,7 +125,7 @@ class IdcsTenantAdapterTest {
                         "client-secret", "idcs-secret",
                         "authorization-code.redirection-endpoint-uri", "/oidc/idcs-callback",
                         "id-token.trusted-additional-audiences.0", "https://another-issuer.example/",
-                        "cookies.protection.password", COOKIE_PASSWORD)))
+                        "cookies.password", COOKIE_PASSWORD)))
                 .build();
         OidcTenantConfig fromConfig = OidcProviderConfig.create(config)
                 .tenants().get("default");
@@ -200,7 +200,7 @@ class IdcsTenantAdapterTest {
                         Map.entry("tenants.oracle.client-id", "idcs-client"),
                         Map.entry("tenants.oracle.client-secret", "idcs-secret"),
                         Map.entry("tenants.oracle.authorization-code.redirection-endpoint-uri", "/oidc/idcs-callback"),
-                        Map.entry("tenants.oracle.cookies.protection.password", COOKIE_PASSWORD),
+                        Map.entry("tenants.oracle.cookies.password", COOKIE_PASSWORD),
                         Map.entry("tenants.regular.issuer", "https://regular.example"),
                         Map.entry("tenants.regular.client-id", "regular-client"),
                         Map.entry("tenants.regular.client-secret", "regular-secret"),
@@ -208,7 +208,7 @@ class IdcsTenantAdapterTest {
                         Map.entry("tenants.regular.endpoints.token-endpoint-uri", "https://regular.example/token"),
                         Map.entry("tenants.regular.endpoints.jwks-uri", "https://regular.example/jwks"),
                         Map.entry("tenants.regular.authorization-code.redirection-endpoint-uri", "/oidc/regular-callback"),
-                        Map.entry("tenants.regular.cookies.protection.password", COOKIE_PASSWORD))))
+                        Map.entry("tenants.regular.cookies.password", COOKIE_PASSWORD))))
                 .build();
 
         OidcProviderConfig provider = OidcProviderConfig.create(config);
@@ -228,7 +228,7 @@ class IdcsTenantAdapterTest {
                         "client-id", "client",
                         "client-secret", "secret",
                         "authorization-code.redirection-endpoint-uri", "/oidc/callback",
-                        "cookies.protection.password", COOKIE_PASSWORD)))
+                        "cookies.password", COOKIE_PASSWORD)))
                 .build();
 
         OidcProviderConfig provider = OidcProviderConfig.create(config);
@@ -267,12 +267,12 @@ class IdcsTenantAdapterTest {
                         Map.entry("tenants.first.client-id", "client-one"),
                         Map.entry("tenants.first.client-secret", "secret-one"),
                         Map.entry("tenants.first.authorization-code.redirection-endpoint-uri", "/oidc/idcs-one"),
-                        Map.entry("tenants.first.cookies.protection.password", COOKIE_PASSWORD),
+                        Map.entry("tenants.first.cookies.password", COOKIE_PASSWORD),
                         Map.entry("tenants.second.adapter.idcs.domain-uri", "https://idcs-two.identity.oraclecloud.com"),
                         Map.entry("tenants.second.client-id", "client-two"),
                         Map.entry("tenants.second.client-secret", "secret-two"),
                         Map.entry("tenants.second.authorization-code.redirection-endpoint-uri", "/oidc/idcs-two"),
-                        Map.entry("tenants.second.cookies.protection.password", COOKIE_PASSWORD))))
+                        Map.entry("tenants.second.cookies.password", COOKIE_PASSWORD))))
                 .build();
 
         OidcProviderConfig provider = OidcProviderConfig.create(config);
@@ -369,6 +369,6 @@ class IdcsTenantAdapterTest {
                 .clientId("idcs-client")
                 .clientSecret("idcs-secret")
                 .authorizationCode(code -> code.redirectionEndpointUri(URI.create("/oidc/idcs-callback")))
-                .cookies(cookies -> cookies.protection(protection -> protection.password(COOKIE_PASSWORD)));
+                .cookies(cookies -> cookies.password(COOKIE_PASSWORD));
     }
 }

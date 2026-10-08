@@ -20,8 +20,7 @@ security:
             authorization-code:
               redirection-endpoint-uri: "https://app.example/oidc/oracle-callback"
             cookies:
-              protection:
-                password: "${OIDC_COOKIE_PASSWORD}"
+              password: "${OIDC_COOKIE_PASSWORD}"
           keycloak:
             issuer: "https://login.example/realms/main"
             client-id: "${KEYCLOAK_CLIENT_ID}"
@@ -29,8 +28,7 @@ security:
             authorization-code:
               redirection-endpoint-uri: "https://app.example/oidc/keycloak-callback"
             cookies:
-              protection:
-                password: "${OIDC_COOKIE_PASSWORD}"
+              password: "${OIDC_COOKIE_PASSWORD}"
 ```
 
 The IDCS `domain-uri` must be an HTTPS domain URL without a path, userinfo, query or fragment. The adapter supplies

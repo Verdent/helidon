@@ -103,17 +103,14 @@ Cookie configuration used by stateful OIDC flows
 </tr>
 <tr>
 <td>
-<a id="protection"></a>
-<a href="io.helidon.security.providers.oidc.next.OidcCookieProtectionConfig.md">
-<code>protection</code>
-</a>
+<code>password</code>
 </td>
 <td>
-<code>Oidc<wbr>Cookie<wbr>Protection<wbr>Config</code>
+<code>String</code>
 </td>
 <td>
 </td>
-<td>Password-based cookie protection</td>
+<td>Deployment-specific password from which cookie encryption keys are derived</td>
 </tr>
 <tr>
 <td>

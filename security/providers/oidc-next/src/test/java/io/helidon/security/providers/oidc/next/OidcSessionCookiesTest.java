@@ -313,7 +313,7 @@ class OidcSessionCookiesTest {
 
     private static OidcTenantConfig tenant(Consumer<OidcCookieConfig.Builder> customizer) {
         return OidcTenantConfig.builder().clientId(CLIENT).cookies(it -> {
-            it.protection(protection -> protection.password(PASSWORD));
+            it.password(PASSWORD);
             customizer.accept(it);
         }).buildPrototype();
     }

@@ -132,13 +132,15 @@ interface OidcCookieConfigBlueprint {
     int maxSessionSize();
 
     /**
-     * Password-based cookie protection.
+     * Deployment-specific password from which cookie encryption keys are derived.
      * <p>
-     * Authorization Code Flow requires this option because its Authentication Request and local authentication
-     * cookies contain security-sensitive state.
+     * Must contain between 16 and 1024 characters. Use a strong, randomly generated value and configure the same
+     * password on all replicas that accept the same browser session. Authorization Code Flow requires this setting
+     * because its Authentication Request and local authentication cookies contain security-sensitive state.
      *
-     * @return cookie protection configuration
+     * @return cookie protection password, if configured
      */
     @Option.Configured
-    Optional<OidcCookieProtectionConfig> protection();
+    @Option.Confidential
+    Optional<String> password();
 }

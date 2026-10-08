@@ -87,7 +87,7 @@ final class OidcIntegrationSupport {
                     authorizationCodeCustomizer.accept(authorizationCode);
                 })
                 .userInfo(userInfo -> userInfo.attributeClaimPaths(List.of("email")))
-                .cookies(cookies -> cookies.protection(protection -> protection.password(COOKIE_PASSWORD)));
+                .cookies(cookies -> cookies.password(COOKIE_PASSWORD));
         tenantCustomizer.accept(tenant);
         return OidcProviderConfig.builder()
                 .putTenant("default", tenant.buildPrototype())
@@ -109,7 +109,7 @@ final class OidcIntegrationSupport {
                     authorizationCodeCustomizer.accept(authorizationCode);
                 })
                 .userInfo(userInfo -> userInfo.attributeClaimPaths(List.of("email")))
-                .cookies(cookies -> cookies.protection(protection -> protection.password(COOKIE_PASSWORD)));
+                .cookies(cookies -> cookies.password(COOKIE_PASSWORD));
         if (idp.parEnabled()) {
             trustParEndpoint(tenant);
         }

@@ -283,8 +283,7 @@ class IdcsProtectedJwkAuthenticationTest {
                 .clientId("client")
                 .clientSecret("secret")
                 .authorizationCode(code -> code.redirectionEndpointUri(URI.create("/oidc/idcs-callback")))
-                .cookies(cookies -> cookies.protection(protection -> protection
-                        .password("a-long-enough-code-flow-cookie-password")))
+                .cookies(cookies -> cookies.password("a-long-enough-code-flow-cookie-password"))
                 .webClient(WebClientConfig.builder().tls(tls -> tls.trust(trustedServer)).buildPrototype())
                 .buildPrototype();
         OidcProvider provider = OidcProvider.create(OidcProviderConfig.builder()

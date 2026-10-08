@@ -1226,7 +1226,7 @@ class OidcRefreshTokenManagerTest {
                             .resources(authorizationCodeResources);
                     authorizationCodeCustomizer.accept(it);
                 })
-                .cookies(it -> it.protection(protection -> protection.password(COOKIE_PASSWORD)))
+                .cookies(it -> it.password(COOKIE_PASSWORD))
                 .buildPrototype();
     }
 
@@ -1245,7 +1245,7 @@ class OidcRefreshTokenManagerTest {
                         .tokenValidation(validation -> validation
                                 .method(OidcTokenValidationMethod.JWT)
                                 .audience(AUDIENCE)))
-                .cookies(it -> it.protection(protection -> protection.password(COOKIE_PASSWORD)))
+                .cookies(it -> it.password(COOKIE_PASSWORD))
                 .buildPrototype();
     }
 
@@ -1265,7 +1265,7 @@ class OidcRefreshTokenManagerTest {
                         .tokenValidation(validation -> validation
                                 .method(OidcTokenValidationMethod.INTROSPECTION)
                                 .audience(AUDIENCE)))
-                .cookies(it -> it.protection(protection -> protection.password(COOKIE_PASSWORD)))
+                .cookies(it -> it.password(COOKIE_PASSWORD))
                 .buildPrototype();
     }
 
@@ -1287,7 +1287,7 @@ class OidcRefreshTokenManagerTest {
                 .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI)
                         .scopes(List.of("openid", "profile")))
                 .userInfo(userInfo)
-                .cookies(it -> it.protection(protection -> protection.password(COOKIE_PASSWORD)))
+                .cookies(it -> it.password(COOKIE_PASSWORD))
                 .buildPrototype();
     }
 

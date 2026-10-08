@@ -212,7 +212,7 @@ class OidcFeatureRouteTest {
                 .authorizationCode(authorizationCode -> authorizationCode
                         .redirectionEndpointUri(CONFIGURED_REDIRECTION_ENDPOINT_URI)
                         .scopes(List.of("openid", "profile")))
-                .cookies(cookies -> cookies.protection(protection -> protection.password(COOKIE_PASSWORD)))
+                .cookies(cookies -> cookies.password(COOKIE_PASSWORD))
                 .buildPrototype();
         OidcProviderConfig config = OidcProviderConfig.builder()
                 .putTenant("honest", honestTenant)
@@ -259,7 +259,7 @@ class OidcFeatureRouteTest {
                         .jwksUri(serverUri.resolve("jwks"))
                         .tlsRequired(false))
                 .authorizationCode(code -> code.redirectionEndpointUri(URI.create("/oidc/other-callback")))
-                .cookies(cookies -> cookies.protection(protection -> protection.password(COOKIE_PASSWORD)))
+                .cookies(cookies -> cookies.password(COOKIE_PASSWORD))
                 .buildPrototype();
         OidcProviderConfig config = OidcProviderConfig.builder()
                 .issuerUniquenessValidationEnabled(false)
@@ -1022,7 +1022,7 @@ class OidcFeatureRouteTest {
         OidcTenantConfig tenant = OidcTenantConfig.builder(tenantConfig(serverUri))
                 .adapter(adapter)
                 .cookies(cookies -> cookies.compression(OidcCookieCompression.NONE)
-                        .protection(protection -> protection.password(COOKIE_PASSWORD)))
+                        .password(COOKIE_PASSWORD))
                 .buildPrototype();
         OidcCookieStateHandler cookieHandler = OidcCookieStateHandler.create("default", tenant);
         String sessionCookieName = tenant.cookies().localAuthenticationCookieName();
@@ -3160,7 +3160,7 @@ class OidcFeatureRouteTest {
                         .tlsRequired(false))
                 .authorizationCode(code -> code.redirectionEndpointUri(CONFIGURED_REDIRECTION_ENDPOINT_URI)
                         .scopes(List.of("openid", "profile")))
-                .cookies(cookies -> cookies.protection(protection -> protection.password(COOKIE_PASSWORD)))
+                .cookies(cookies -> cookies.password(COOKIE_PASSWORD))
                 .buildPrototype();
         return OidcProviderConfig.builder()
                 .putTenant("honest", tenantConfig(serverUri))
@@ -3190,7 +3190,7 @@ class OidcFeatureRouteTest {
                         .jwksUri(JWKS_URI))
                 .authorizationCode(it -> it.redirectionEndpointUri(CONFIGURED_REDIRECTION_ENDPOINT_URI)
                         .scopes(List.of("openid", "profile")))
-                .cookies(it -> it.protection(protection -> protection.password(COOKIE_PASSWORD)))
+                .cookies(it -> it.password(COOKIE_PASSWORD))
                 .buildPrototype();
     }
 
@@ -3253,7 +3253,7 @@ class OidcFeatureRouteTest {
                 .logout(logout -> logout.endSession(endSession))
                 .cookies(it -> it.authenticationRequestCookieName(authenticationRequestCookieName)
                         .localAuthenticationCookieName(localAuthenticationCookieName)
-                        .protection(protection -> protection.password(cookiePassword)));
+                        .password(cookiePassword));
         tenantCustomizer.accept(builder);
         return builder.buildPrototype();
     }
@@ -3266,7 +3266,7 @@ class OidcFeatureRouteTest {
                 .clientId(CLIENT_ID)
                 .endpoints(it -> it.tlsRequired(false))
                 .logout(logout -> logout.endSession(endSession))
-                .cookies(it -> it.protection(protection -> protection.password(COOKIE_PASSWORD)))
+                .cookies(it -> it.password(COOKIE_PASSWORD))
                 .buildPrototype();
     }
 
@@ -3295,7 +3295,7 @@ class OidcFeatureRouteTest {
                 .logout(logout)
                 .cookies(it -> it.authenticationRequestCookieName(authenticationRequestCookieName)
                         .localAuthenticationCookieName(localAuthenticationCookieName)
-                        .protection(protection -> protection.password(cookiePassword)))
+                        .password(cookiePassword))
                 .buildPrototype();
     }
 
@@ -3318,7 +3318,7 @@ class OidcFeatureRouteTest {
                             .scopes(List.of("openid", "profile"));
                     authorizationCode.accept(it);
                 })
-                .cookies(it -> it.protection(protection -> protection.password(COOKIE_PASSWORD)))
+                .cookies(it -> it.password(COOKIE_PASSWORD))
                 .buildPrototype();
     }
 
@@ -3346,7 +3346,7 @@ class OidcFeatureRouteTest {
                 .authorizationCode(it -> it.redirectionEndpointUri(CONFIGURED_REDIRECTION_ENDPOINT_URI)
                         .scopes(List.of("openid", "profile")))
                 .userInfo(userInfo)
-                .cookies(it -> it.protection(protection -> protection.password(COOKIE_PASSWORD)))
+                .cookies(it -> it.password(COOKIE_PASSWORD))
                 .buildPrototype();
     }
 

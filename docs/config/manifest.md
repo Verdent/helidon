@@ -92,7 +92,6 @@ See the [root type](config_reference.md).
 - [io.<wbr>helidon.<wbr>security.<wbr>providers.<wbr>oidc.<wbr>next.<wbr>Oidc<wbr>Certificate<wbr>Bound<wbr>Access<wbr>Token<wbr>Config](io.helidon.security.providers.oidc.next.OidcCertificateBoundAccessTokenConfig.md)
 - [io.<wbr>helidon.<wbr>security.<wbr>providers.<wbr>oidc.<wbr>next.<wbr>Oidc<wbr>Client<wbr>Assertion<wbr>Config](io.helidon.security.providers.oidc.next.OidcClientAssertionConfig.md)
 - [io.<wbr>helidon.<wbr>security.<wbr>providers.<wbr>oidc.<wbr>next.<wbr>Oidc<wbr>Cookie<wbr>Config](io.helidon.security.providers.oidc.next.OidcCookieConfig.md)
-- [io.<wbr>helidon.<wbr>security.<wbr>providers.<wbr>oidc.<wbr>next.<wbr>Oidc<wbr>Cookie<wbr>Protection<wbr>Config](io.helidon.security.providers.oidc.next.OidcCookieProtectionConfig.md)
 - [io.<wbr>helidon.<wbr>security.<wbr>providers.<wbr>oidc.<wbr>next.<wbr>Oidc<wbr>EndSession<wbr>Config](io.helidon.security.providers.oidc.next.OidcEndSessionConfig.md)
 - [io.<wbr>helidon.<wbr>security.<wbr>providers.<wbr>oidc.<wbr>next.<wbr>Oidc<wbr>Endpoint<wbr>Config](io.helidon.security.providers.oidc.next.OidcEndpointConfig.md)
 - [io.<wbr>helidon.<wbr>security.<wbr>providers.<wbr>oidc.<wbr>next.<wbr>Oidc<wbr>Endpoint<wbr>Policy<wbr>Config](io.helidon.security.providers.oidc.next.OidcEndpointPolicyConfig.md)

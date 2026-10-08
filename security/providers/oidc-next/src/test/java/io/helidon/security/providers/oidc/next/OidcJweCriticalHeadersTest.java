@@ -227,7 +227,7 @@ class OidcJweCriticalHeadersTest {
                         config.signingAlgorithm("RS256");
                     }
                 }))
-                .cookies(config -> config.protection(protection -> protection.password("test-cookie-password")))
+                .cookies(config -> config.password("test-cookie-password"))
                 .buildPrototype();
         return OidcTenantContext.ready("default", tenant);
     }

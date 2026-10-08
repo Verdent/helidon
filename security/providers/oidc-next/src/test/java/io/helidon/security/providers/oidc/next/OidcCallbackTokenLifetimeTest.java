@@ -151,7 +151,7 @@ class OidcCallbackTokenLifetimeTest {
                 .authorizationCode(code -> code.redirectionEndpointUri(URI.create("/oidc/callback")))
                 .userInfo(_ -> { })
                 .cookies(cookies -> cookies.localAuthenticationLifetime(SESSION_LIFETIME)
-                        .protection(protection -> protection.password("lifetime-cookie-password")));
+                        .password("lifetime-cookie-password"));
         if (phase == DelayPhase.SUBJECT_MAPPING) {
             USER_INFO_GATE.get().release().countDown();
             builder.adapter(new OidcTenantAdapter() {

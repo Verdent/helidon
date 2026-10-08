@@ -254,7 +254,7 @@ OidcProviderConfig config = OidcProviderConfig.builder()
         .logout(logout -> logout
                 .localEndpointUri(URI.create("/oidc/logout")))
         .cookies(cookies -> cookies
-                .protection(protection -> protection.password(System.getenv("OIDC_COOKIE_PASSWORD"))))
+                .password(System.getenv("OIDC_COOKIE_PASSWORD")))
         .buildPrototype();
 
 OidcProvider provider = OidcProvider.create(config);
@@ -279,7 +279,7 @@ OidcProviderConfig config = OidcProviderConfig.builder()
                         .encryptionKeyId("op-encryption-key")
                         .lifetime(Duration.ofMinutes(1))))
         .cookies(cookies -> cookies
-                .protection(protection -> protection.password(System.getenv("OIDC_COOKIE_PASSWORD"))))
+                .password(System.getenv("OIDC_COOKIE_PASSWORD")))
         .buildPrototype();
 ```
 
@@ -297,7 +297,7 @@ OidcProviderConfig config = OidcProviderConfig.builder()
         .logout(logout -> logout
                 .localEndpointUri(URI.create("/oidc/logout")))
         .cookies(cookies -> cookies
-                .protection(protection -> protection.password(System.getenv("OIDC_COOKIE_PASSWORD"))))
+                .password(System.getenv("OIDC_COOKIE_PASSWORD")))
         .buildPrototype();
 
 OidcProvider oidcProvider = OidcProvider.create(config);
@@ -348,8 +348,7 @@ security:
         authorization-code:
           scopes: [ "openid", "profile" ]
         cookies:
-          protection:
-            password: "${OIDC_COOKIE_PASSWORD}"
+          password: "${OIDC_COOKIE_PASSWORD}"
 ```
 
 `socket-required` defaults to `true` for named OIDC sockets. Set it to `false` only if the feature may fall back to the
@@ -1144,8 +1143,7 @@ security:
         authorization-code:
           scopes: [ "openid", "profile", "email" ]
         cookies:
-          protection:
-            password: "${OIDC_COOKIE_PASSWORD}"
+          password: "${OIDC_COOKIE_PASSWORD}"
 ```
 
 When `authorization-code` is configured and not explicitly disabled:
@@ -1156,7 +1154,7 @@ When `authorization-code` is configured and not explicitly disabled:
 - `authorization-code.prompts`, when configured, are sent as the OIDC Authentication Request `prompt` parameter.
 - `authorization-code.resources`, when configured, are sent as repeated RFC 8707 Authentication Request `resource`
   parameters.
-- `cookies.protection.password` is required.
+- `cookies.password` is required.
 - An Authorization Endpoint and Token Endpoint are required, either explicitly or from well-known metadata.
 - A JWK Set URI is required for ID Token signature verification, either as `endpoints.jwks-uri` or as `jwks_uri` from
   well-known metadata.
@@ -1174,23 +1172,19 @@ endpoints:
   jwks-uri: "https://issuer.example/jwks"
 ```
 
-Cookie protection uses PBKDF2-HMAC-SHA-256 with 600,000 iterations by default, followed by HKDF-SHA-256 to derive
-separate AES-256-GCM keys for Authentication Request and local authentication cookies. Key derivation runs
-synchronously on the tenant's first cookie operation and the derived keys are then retained in memory. Configure the
-same strong, deployment-specific password on every replica. The password must contain between 16 and 1024 characters.
+Cookie protection uses PBKDF2-HMAC-SHA-256 with a fixed 600,000 iterations, followed by HKDF-SHA-256 to derive
+separate AES-256-GCM keys for Authentication Request, local authentication, and browser-generation cookies. Key
+derivation runs synchronously on the tenant's first cookie operation, after which the keys are retained in memory.
+Configure the same strong, randomly generated deployment-specific password on every replica. The password must contain
+between 16 and 1024 characters.
 
-By default, the PBKDF2 salt is deterministically derived from a public format label, the tenant id, and the client id.
-This keeps replicas interoperable without another required setting. To isolate deployments that intentionally reuse the
-same tenant id, client id, and password, configure a random 16-byte salt as canonical unpadded Base64URL and use the same
-value on every replica. The salt is public; it does not need confidential storage. The optional iteration count must be
-between 600,000 and 10,000,000.
+The internal PBKDF2 salt is deterministically derived from a public format label, the tenant id, and the client id,
+so replicas can read the same cookies without another setting. Use a different password for each deployment; the salt
+and iteration count are not configuration options.
 
 ```yaml
 cookies:
-  protection:
-    password: "${OIDC_COOKIE_PASSWORD}"
-    salt: "yD6wIno2KCq2znbRzL3aUQ"
-    iterations: 700000
+  password: "${OIDC_COOKIE_PASSWORD}"
 ```
 
 By default, Authorization Request `state` uses the versioned form
@@ -1543,8 +1537,7 @@ security:
           redirection-endpoint-uri: "https://app.example/oidc/callback"
           scopes: [ "openid", "profile" ]
         cookies:
-          protection:
-            password: "${OIDC_COOKIE_PASSWORD}"
+          password: "${OIDC_COOKIE_PASSWORD}"
 ```
 
 The provider requires encrypted ID Tokens to be nested JWTs (`cty=JWT`), decrypts the outer JWE, and then validates the
@@ -1593,7 +1586,7 @@ OidcProviderConfig config = OidcProviderConfig.builder()
                 .redirectionEndpointUri(URI.create("https://app.example/oidc/callback"))
                 .scopes(List.of("openid", "profile")))
         .cookies(cookies -> cookies
-                .protection(protection -> protection.password(System.getenv("OIDC_COOKIE_PASSWORD"))))
+                .password(System.getenv("OIDC_COOKIE_PASSWORD")))
         .buildPrototype();
 ```
 
@@ -1638,8 +1631,7 @@ security:
           storage-policy: mapped
           attribute-claim-paths: [ "email", "department" ]
         cookies:
-          protection:
-            password: "${OIDC_COOKIE_PASSWORD}"
+          password: "${OIDC_COOKIE_PASSWORD}"
 ```
 
 When `user-info` is configured and not explicitly disabled:
@@ -1757,7 +1749,7 @@ OidcProviderConfig config = OidcProviderConfig.builder()
                 .storagePolicy(OidcUserInfoStoragePolicy.MAPPED)
                 .attributeClaimPaths(List.of("email", "department")))
         .cookies(cookies -> cookies
-                .protection(protection -> protection.password(System.getenv("OIDC_COOKIE_PASSWORD"))))
+                .password(System.getenv("OIDC_COOKIE_PASSWORD")))
         .buildPrototype();
 ```
 
@@ -1778,8 +1770,7 @@ security:
         logout:
           local-endpoint-uri: "/oidc/logout"
         cookies:
-          protection:
-            password: "${OIDC_COOKIE_PASSWORD}"
+          password: "${OIDC_COOKIE_PASSWORD}"
 ```
 
 When `logout` is configured and not explicitly disabled, `logout.local-endpoint-uri` defaults to `/oidc/logout`.
@@ -1808,8 +1799,7 @@ security:
             allowed-post-logout-redirect-uris:
               - "https://app.example/signed-out"
         cookies:
-          protection:
-            password: "${OIDC_COOKIE_PASSWORD}"
+          password: "${OIDC_COOKIE_PASSWORD}"
 ```
 
 If `endpoints.end-session-endpoint-uri` is omitted, well-known metadata must be available from `issuer` or
@@ -1857,7 +1847,7 @@ OidcProviderConfig config = OidcProviderConfig.builder()
                         .postLogoutRedirectUri(URI.create("https://app.example/logged-out"))
                         .addAllowedPostLogoutRedirectUri(URI.create("https://app.example/signed-out"))))
         .cookies(cookies -> cookies
-                .protection(protection -> protection.password(System.getenv("OIDC_COOKIE_PASSWORD"))))
+                .password(System.getenv("OIDC_COOKIE_PASSWORD")))
         .buildPrototype();
 ```
 
@@ -1907,8 +1897,7 @@ security:
           redirection-endpoint-uri: "https://app.example/oidc/callback"
           scopes: [ "openid", "profile" ]
         cookies:
-          protection:
-            password: "${OIDC_COOKIE_PASSWORD}"
+          password: "${OIDC_COOKIE_PASSWORD}"
 ```
 
 Example using `client_secret_jwt`:
@@ -1927,8 +1916,7 @@ security:
         authorization-code:
           redirection-endpoint-uri: "https://app.example/oidc/callback"
         cookies:
-          protection:
-            password: "${OIDC_COOKIE_PASSWORD}"
+          password: "${OIDC_COOKIE_PASSWORD}"
 ```
 
 Example using `private_key_jwt`:
@@ -1949,8 +1937,7 @@ security:
         authorization-code:
           redirection-endpoint-uri: "https://app.example/oidc/callback"
         cookies:
-          protection:
-            password: "${OIDC_COOKIE_PASSWORD}"
+          password: "${OIDC_COOKIE_PASSWORD}"
 ```
 
 `client_secret_jwt` and `private_key_jwt` send `client_assertion_type` with
@@ -2112,8 +2099,7 @@ security:
         authorization-code:
           redirection-endpoint-uri: "https://app.example/oidc/callback"
         cookies:
-          protection:
-            password: "${OIDC_COOKIE_PASSWORD}"
+          password: "${OIDC_COOKIE_PASSWORD}"
 ```
 
 For `TLS_CLIENT_AUTH` and `SELF_SIGNED_TLS_CLIENT_AUTH`, the OIDC provider sends `client_id` in the Token Endpoint form
@@ -2154,7 +2140,7 @@ OidcProviderConfig config = OidcProviderConfig.builder()
         .authorizationCode(authorizationCode -> authorizationCode
                 .redirectionEndpointUri(URI.create("https://app.example/oidc/callback")))
         .cookies(cookies -> cookies
-                .protection(protection -> protection.password(System.getenv("OIDC_COOKIE_PASSWORD"))))
+                .password(System.getenv("OIDC_COOKIE_PASSWORD")))
         .buildPrototype();
 ```
 
@@ -2171,8 +2157,7 @@ security:
           redirection-endpoint-uri: "https://app.example/oidc/callback"
           scopes: [ "openid", "profile" ]
         cookies:
-          protection:
-            password: "${OIDC_COOKIE_PASSWORD}"
+          password: "${OIDC_COOKIE_PASSWORD}"
 ```
 
 ## Outbound Token Propagation, Client Credentials, And Token Exchange
@@ -2613,12 +2598,11 @@ cookies:
   max-total-size: 12288
   compression: NONE
   max-session-size: 65536
-  protection:
-    password: "${OIDC_COOKIE_PASSWORD}"
+  password: "${OIDC_COOKIE_PASSWORD}"
 ```
 
-Cookie lifetimes must be positive. Both names must be distinct valid HTTP cookie names. Use the same cookie protection
-password, salt override, and iteration count on every service node that must accept the same browser session. This makes
+Cookie lifetimes must be positive. Both names must be distinct valid HTTP cookie names. Use the same cookie password,
+tenant id, and client id on every service node that must accept the same browser session. This makes
 cookies readable without affinity, but safe coalescing of refresh-token rotation remains process-local as described
 below.
 
@@ -2835,8 +2819,7 @@ security:
           scope-claim-paths: [ "scope", "scp" ]
           scope-grants-enabled: true
         cookies:
-          protection:
-            password: "${OIDC_COOKIE_PASSWORD}"
+          password: "${OIDC_COOKIE_PASSWORD}"
 ```
 
 If the custom claims are returned only by the UserInfo Endpoint, enable UserInfo and include role or name claim paths in
@@ -2860,8 +2843,7 @@ security:
         subject-mapping:
           role-claim-paths: [ "iam.groups" ]
         cookies:
-          protection:
-            password: "${OIDC_COOKIE_PASSWORD}"
+          password: "${OIDC_COOKIE_PASSWORD}"
 ```
 
 After authentication, the application can authorize with Helidon roles, scopes, or custom principal attributes. For
@@ -2903,7 +2885,7 @@ OidcProviderConfig config = OidcProviderConfig.builder()
                 .scopeClaimPaths(List.of("scope", "scp"))
                 .scopeGrantsEnabled(true))
         .cookies(cookies -> cookies
-                .protection(protection -> protection.password(System.getenv("OIDC_COOKIE_PASSWORD"))))
+                .password(System.getenv("OIDC_COOKIE_PASSWORD")))
         .buildPrototype();
 ```
 
@@ -2936,8 +2918,7 @@ security:
             method: JWT
             audience: "api://orders"
         cookies:
-          protection:
-            password: "${OIDC_COOKIE_PASSWORD}"
+          password: "${OIDC_COOKIE_PASSWORD}"
 ```
 
 When Bearer token evidence is present, the provider treats the request as Bearer Token authentication. Otherwise it can

@@ -205,8 +205,7 @@ final class OidcJwkSetManager {
             }
             JwkKeys current = currentState.keys();
             if (current == null) {
-                // A no-store response was fetched for this invocation but must not be saved or fetched twice.
-                return staleKeys;
+                return loadInitialJwkKeys(currentState);
             }
             if (current.forKeyId(keyId).isPresent()) {
                 return current;
@@ -289,8 +288,7 @@ final class OidcJwkSetManager {
         if (refreshFailure != null) {
             throw refreshFailure;
         }
-        // A no-store response is not retained: each waiting caller must load its own copy.
-        return loadInitialJwkKeys(published);
+        throw new IllegalStateException("JWK Set load produced no outcome");
     }
 
     private void recordRefreshFailure(RuntimeException refreshFailure) {
@@ -323,7 +321,7 @@ final class OidcJwkSetManager {
                     .orElse(config.maxStaleOnError());
             staleUntil = expiresAt.plus(permitted);
         }
-        state = new JwkSetState(loaded.reusable() ? loaded.keys() : null, now, expiresAt, staleUntil, null);
+        state = new JwkSetState(loaded.keys(), now, expiresAt, staleUntil, null);
     }
 
     private boolean unknownKeyIdRefreshAllowed() {

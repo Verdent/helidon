@@ -262,11 +262,13 @@ final class OidcJwkSetLoader {
         if (freshness != null) {
             freshness = freshness.compareTo(currentAge) <= 0 ? Duration.ZERO : freshness.minus(currentAge);
         }
-        if (noStore || noCache) {
-            freshness = Duration.ZERO;
-        }
+        // RFC 9111 section 6 distinguishes HTTP response caches from an application's use of retrieved data.
+        // This loader does not store the HTTP response. The manager retains only parsed public verification keys,
+        // bounded by its own maximum and any explicit response lifetime. Do not turn no-cache/no-store into an
+        // unbounded number of JWKS requests during JWT validation; neither directive grants stale-on-error use.
+        // https://www.rfc-editor.org/rfc/rfc9111.html#section-6
         return new LoadedJwkSet(keys, Optional.ofNullable(freshness), currentAge, Optional.ofNullable(staleIfError),
-                                !noStore, !noStore && !noCache && !mustRevalidate && !alreadyStale);
+                                !noStore && !noCache && !mustRevalidate && !alreadyStale);
     }
 
     private static Optional<Instant> httpDate(String value) {
@@ -311,10 +313,9 @@ final class OidcJwkSetLoader {
                         Optional<Duration> freshness,
                         Duration responseAge,
                         Optional<Duration> staleIfError,
-                        boolean reusable,
                         boolean staleAllowed) {
         private static LoadedJwkSet local(JwkKeys keys) {
-            return new LoadedJwkSet(keys, Optional.empty(), Duration.ZERO, Optional.empty(), true, true);
+            return new LoadedJwkSet(keys, Optional.empty(), Duration.ZERO, Optional.empty(), true);
         }
     }
 }

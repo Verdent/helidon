@@ -76,9 +76,12 @@ interface OidcJwkSetConfigBlueprint {
     /**
      * Maximum age of a cached JWK Set before lazy refresh.
      * <p>
-     * HTTP JWK Sets default to five minutes when this option is absent. An HTTP response can shorten that lifetime using
-     * cache headers; it cannot extend this maximum. Local resources are not refreshed by age unless this option is set.
-     * Refresh happens during key use; no background thread is started.
+     * HTTP JWK Sets default to five minutes when this option is absent. An explicit HTTP {@code max-age} or
+     * {@code Expires} can shorten that lifetime; it cannot extend this maximum. {@code no-cache} and {@code no-store}
+     * control HTTP response caching but do not by themselves expire the parsed public-key trust set held by this
+     * application. Zero refreshes on each subsequent use; concurrent callers can share a single in-flight load. Local
+     * resources are not refreshed by age unless this option is set. Refresh happens during key use; no background thread
+     * is started.
      *
      * @return lazy refresh interval
      */

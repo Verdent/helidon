@@ -834,18 +834,17 @@ class OidcProviderConfigTest {
     }
 
     @Test
-    void jwkSetRejectsNonPositiveRefreshInterval() {
-        IllegalArgumentException zero = assertThrows(IllegalArgumentException.class,
-                                                     () -> OidcTenantConfig.builder()
-                                                             .jwkSet(it -> it.refreshInterval(Duration.ZERO))
-                                                             .buildPrototype());
+    void jwkSetAllowsZeroRefreshIntervalButRejectsNegative() {
+        OidcTenantConfig zero = OidcTenantConfig.builder()
+                .jwkSet(it -> it.refreshInterval(Duration.ZERO))
+                .buildPrototype();
         IllegalArgumentException negative = assertThrows(IllegalArgumentException.class,
                                                          () -> OidcTenantConfig.builder()
                                                                  .jwkSet(it -> it.refreshInterval(
                                                                          Duration.ofSeconds(-1)))
                                                                  .buildPrototype());
 
-        assertThat(zero.getMessage(), containsString("jwk-set.refresh-interval"));
+        assertThat(zero.jwkSet().refreshInterval().orElseThrow(), is(Duration.ZERO));
         assertThat(negative.getMessage(), containsString("jwk-set.refresh-interval"));
     }
 

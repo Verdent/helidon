@@ -127,9 +127,9 @@ final class OidcTenantConfigDecorator
             throw new IllegalArgumentException("jwk-set.unknown-key-id-refresh-interval must not be negative");
         }
         jwkSet.refreshInterval()
-                .filter(interval -> interval.isZero() || interval.isNegative())
+                .filter(interval -> interval.isNegative())
                 .ifPresent(_ -> {
-                    throw new IllegalArgumentException("jwk-set.refresh-interval must be positive");
+                    throw new IllegalArgumentException("jwk-set.refresh-interval must not be negative");
                 });
         if (jwkSet.failureRetryInterval().isZero() || jwkSet.failureRetryInterval().isNegative()) {
             throw new IllegalArgumentException("jwk-set.failure-retry-interval must be positive");

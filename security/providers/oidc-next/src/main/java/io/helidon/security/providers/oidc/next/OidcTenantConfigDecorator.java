@@ -369,30 +369,17 @@ final class OidcTenantConfigDecorator
         if (cookies.localAuthenticationLifetime().isZero() || cookies.localAuthenticationLifetime().isNegative()) {
             throw new IllegalArgumentException("cookies.local-authentication-lifetime must be positive");
         }
-        cookies.protection().ifPresent(protection -> {
-            String password = protection.password();
+        cookies.password().ifPresent(password -> {
             if (password.isBlank()
                     || password.length() < OidcCookieKeys.MIN_PASSWORD_LENGTH
                     || password.length() > OidcCookieKeys.MAX_PASSWORD_LENGTH) {
-                throw new IllegalArgumentException("cookies.protection.password must contain between "
+                throw new IllegalArgumentException("cookies.password must contain between "
                                                            + OidcCookieKeys.MIN_PASSWORD_LENGTH + " and "
                                                            + OidcCookieKeys.MAX_PASSWORD_LENGTH + " characters");
             }
-            protection.salt()
-                    .filter(salt -> !OidcCookieKeys.validSalt(salt))
-                    .ifPresent(_ -> {
-                        throw new IllegalArgumentException("cookies.protection.salt must be the canonical, unpadded "
-                                                                   + "Base64URL encoding of exactly 16 bytes");
-                    });
-            if (protection.iterations() < OidcCookieKeys.MIN_ITERATIONS
-                    || protection.iterations() > OidcCookieKeys.MAX_ITERATIONS) {
-                throw new IllegalArgumentException("cookies.protection.iterations must be between "
-                                                           + OidcCookieKeys.MIN_ITERATIONS + " and "
-                                                           + OidcCookieKeys.MAX_ITERATIONS);
-            }
             if (clientId.isEmpty()) {
                 throw new IllegalArgumentException(
-                        "client-id must be configured when cookies.protection is configured");
+                        "client-id must be configured when cookies.password is configured");
             }
         });
     }
@@ -478,9 +465,9 @@ final class OidcTenantConfigDecorator
         validateAuthorizationCodePrompts(authorizationCode.scopes(), authorizationCode.prompts());
         OidcResourceIndicators.validate(authorizationCode.resources(), "authorization-code.resources");
         tenant.cookies()
-                .protection()
+                .password()
                 .orElseThrow(() -> new IllegalArgumentException(
-                        "cookies.protection must be configured when Authorization Code Flow is enabled"));
+                        "cookies.password must be configured when Authorization Code Flow is enabled"));
     }
 
     private static void validatePushedAuthorizationRequests(OidcAuthorizationCodeConfig authorizationCode,

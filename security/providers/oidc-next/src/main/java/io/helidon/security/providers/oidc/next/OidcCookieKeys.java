@@ -21,7 +21,6 @@ import java.nio.charset.StandardCharsets;
 import java.security.GeneralSecurityException;
 import java.security.MessageDigest;
 import java.util.Arrays;
-import java.util.Base64;
 import java.util.List;
 import java.util.Optional;
 
@@ -42,9 +41,8 @@ import javax.crypto.spec.PBEKeySpec;
 final class OidcCookieKeys {
     static final int MIN_PASSWORD_LENGTH = 16;
     static final int MAX_PASSWORD_LENGTH = 1024;
-    static final int MIN_ITERATIONS = 600_000;
-    static final int MAX_ITERATIONS = 10_000_000;
-    static final int SALT_BYTES = 16;
+    private static final int PBKDF2_ITERATIONS = 600_000;
+    private static final int SALT_BYTES = 16;
 
     private static final int AES_KEY_BITS = 256;
     private static final int AES_KEY_BYTES = AES_KEY_BITS / Byte.SIZE;
@@ -71,23 +69,11 @@ final class OidcCookieKeys {
 
     static Optional<OidcCookieKeys> create(String tenantId, OidcTenantConfig tenantConfig) {
         return tenantConfig.cookies()
-                .protection()
-                .map(protection -> create(tenantId,
-                                          tenantConfig.clientId().orElseThrow(() -> new IllegalArgumentException(
-                                                  "client-id must be configured when cookies.protection is configured")),
-                                          protection));
-    }
-
-    static boolean validSalt(String value) {
-        if (value.length() != 22) {
-            return false;
-        }
-        try {
-            byte[] decoded = Base64.getUrlDecoder().decode(value);
-            return decoded.length == SALT_BYTES && encode(decoded).equals(value);
-        } catch (IllegalArgumentException _) {
-            return false;
-        }
+                .password()
+                .map(password -> create(tenantId,
+                                        tenantConfig.clientId().orElseThrow(() -> new IllegalArgumentException(
+                                                "client-id must be configured when cookies.password is configured")),
+                                        password));
     }
 
     KeyMaterial keyMaterial(Purpose purpose) {
@@ -100,18 +86,14 @@ final class OidcCookieKeys {
 
     private static OidcCookieKeys create(String tenantId,
                                          String clientId,
-                                         OidcCookieProtectionConfig protection) {
+                                         String passwordValue) {
         /*
-         * The default salt is deterministic so independently started replicas derive identical keys without shared
-         * storage. An explicit random salt provides deployment isolation when tenant id, client id, and password are
-         * intentionally reused. The salt is public in either case; password strength and PBKDF2 provide resistance to
-         * offline guessing.
+         * The salt is deterministic so independently started replicas derive identical keys without shared storage.
+         * Each deployment must use its own strong cookie password to prevent sharing keys with another deployment.
          */
-        byte[] salt = protection.salt()
-                .map(Base64.getUrlDecoder()::decode)
-                .orElseGet(() -> defaultSalt(tenantId, clientId));
-        char[] password = protection.password().toCharArray();
-        PBEKeySpec keySpec = new PBEKeySpec(password, salt, protection.iterations(), AES_KEY_BITS);
+        byte[] salt = derivedSalt(tenantId, clientId);
+        char[] password = passwordValue.toCharArray();
+        PBEKeySpec keySpec = new PBEKeySpec(password, salt, PBKDF2_ITERATIONS, AES_KEY_BITS);
         byte[] masterKey = null;
         try {
             masterKey = SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256")
@@ -151,7 +133,7 @@ final class OidcCookieKeys {
         return hkdf.deriveKey("AES", parameters);
     }
 
-    private static byte[] defaultSalt(String tenantId, String clientId) {
+    private static byte[] derivedSalt(String tenantId, String clientId) {
         try {
             byte[] digest = MessageDigest.getInstance("SHA-256")
                     .digest(context(PASSWORD_SALT_CONTEXT, tenantId, clientId));
@@ -178,10 +160,6 @@ final class OidcCookieKeys {
         ByteBuffer buffer = ByteBuffer.allocate(length);
         components.forEach(component -> buffer.putInt(component.length).put(component));
         return buffer.array();
-    }
-
-    private static String encode(byte[] value) {
-        return Base64.getUrlEncoder().withoutPadding().encodeToString(value);
     }
 
     enum Purpose {

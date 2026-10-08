@@ -100,7 +100,7 @@ class OidcIssuerUniquenessConfigTest {
                         Map.entry("tenants.first.endpoints.token-endpoint-uri", "https://idcs-a.example/token"),
                         Map.entry("tenants.first.endpoints.jwks-uri", "https://idcs-a.example/jwks"),
                         Map.entry("tenants.first.authorization-code.redirection-endpoint-uri", "/oidc/a"),
-                        Map.entry("tenants.first.cookies.protection.password", "a-long-enough-unique-test-password"),
+                        Map.entry("tenants.first.cookies.password", "a-long-enough-unique-test-password"),
                         Map.entry("tenants.second.issuer", ISSUER),
                         Map.entry("tenants.second.client-id", "client-b"),
                         Map.entry("tenants.second.client-secret", "secret-b"),
@@ -108,7 +108,7 @@ class OidcIssuerUniquenessConfigTest {
                         Map.entry("tenants.second.endpoints.token-endpoint-uri", "https://idcs-b.example/token"),
                         Map.entry("tenants.second.endpoints.jwks-uri", "https://idcs-b.example/jwks"),
                         Map.entry("tenants.second.authorization-code.redirection-endpoint-uri", "/oidc/b"),
-                        Map.entry("tenants.second.cookies.protection.password", "another-unique-test-password"))))
+                        Map.entry("tenants.second.cookies.password", "another-unique-test-password"))))
                 .build();
         OidcProviderConfig provider = OidcProviderConfig.create(config);
         assertThat(provider.issuerUniquenessValidationEnabled(), is(false));
@@ -134,7 +134,7 @@ class OidcIssuerUniquenessConfigTest {
                         .tokenEndpointUri(URI.create(authority + "/token"))
                         .jwksUri(URI.create(authority + "/jwks")))
                 .authorizationCode(it -> it.redirectionEndpointUri(URI.create(callback)))
-                .cookies(it -> it.protection(protection -> protection.password("a-long-enough-unique-test-password")))
+                .cookies(it -> it.password("a-long-enough-unique-test-password"))
                 .buildPrototype();
     }
 }

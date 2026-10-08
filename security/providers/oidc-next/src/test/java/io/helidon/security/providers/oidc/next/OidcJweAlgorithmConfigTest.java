@@ -225,7 +225,7 @@ class OidcJweAlgorithmConfigTest {
                 .userInfo(userInfo -> userInfo.jwt(jwt -> jwt.encryptionAlgorithm("RSA-OAEP")
                         .contentEncryptionAlgorithm("A256GCM")
                         .decryptionJwk(ResourceConfig.builder().contentPlain(PRIVATE_KEYS).buildPrototype())))
-                .cookies(cookies -> cookies.protection(protection -> protection.password("test-cookie-password")));
+                .cookies(cookies -> cookies.password("test-cookie-password"));
     }
 
     private static Config config(String prefix, Map<String, String> overrides) {
@@ -237,7 +237,7 @@ class OidcJweAlgorithmConfigTest {
                 Map.entry("endpoints.user-info-endpoint-uri", ISSUER + "/userinfo"),
                 Map.entry("endpoints.jwks-uri", ISSUER + "/jwks"),
                 Map.entry("authorization-code.redirection-endpoint-uri", "https://rp.example/oidc/callback"),
-                Map.entry("cookies.protection.password", "test-cookie-password"),
+                Map.entry("cookies.password", "test-cookie-password"),
                 Map.entry("id-token.allowed-encryption-algorithms.0", "RSA-OAEP"),
                 Map.entry("id-token.allowed-content-encryption-algorithms.0", "A256GCM"),
                 Map.entry("user-info.jwt.encryption-algorithm", "RSA-OAEP"),

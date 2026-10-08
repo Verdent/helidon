@@ -580,7 +580,7 @@ class OidcIdTokenValidatorTest {
                         .jwksUri(verificationJwksUri)
                         .tlsRequired(false))
                 .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI))
-                .cookies(it -> it.protection(protection -> protection.password(COOKIE_PASSWORD)));
+                .cookies(it -> it.password(COOKIE_PASSWORD));
         customizer.accept(builder);
         return builder.buildPrototype();
     }

@@ -116,8 +116,7 @@ final class RelyingParty implements AutoCloseable {
                             info.jwt(jwt -> jwt.signingAlgorithm("RS256"));
                         }
                     })
-                    .cookies(cookies -> cookies.protection(protection -> protection
-                            .password("integration-test-authentication-cookie-password")))
+                    .cookies(cookies -> cookies.password("integration-test-authentication-cookie-password"))
                     .logout(logout -> logout.endSession(end -> end.enabled(false)));
         }
         if (mode == IdpAdapter.ClientMode.ENCRYPTED_ID_TOKEN) {

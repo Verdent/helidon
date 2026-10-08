@@ -177,12 +177,12 @@ class OidcAuthorizationResponseProcessorTest {
         OidcTenantConfig defaultTenant = OidcTenantConfig.builder()
                 .from(authorizationCodeTenant("first-cookie-password", REDIRECTION_ENDPOINT_URI))
                 .cookies(cookies -> cookies.authenticationRequestCookieName("__Host-oidc-state-first")
-                        .protection(protection -> protection.password("first-cookie-password")))
+                        .password("first-cookie-password"))
                 .buildPrototype();
         OidcTenantConfig secondTenant = OidcTenantConfig.builder()
                 .from(authorizationCodeTenant("second-cookie-password", REDIRECTION_ENDPOINT_URI))
                 .cookies(cookies -> cookies.authenticationRequestCookieName("__Host-oidc-state-second")
-                        .protection(protection -> protection.password("second-cookie-password")))
+                        .password("second-cookie-password"))
                 .buildPrototype();
         OidcProviderConfig config = OidcProviderConfig.builder()
                 .putTenant("default", defaultTenant)
@@ -1210,7 +1210,7 @@ class OidcAuthorizationResponseProcessorTest {
                 .clientId("client-id")
                 .endpoints(endpoints -> endpoints.wellKnownUri(ISSUER.resolve("/.well-known/openid-configuration")))
                 .authorizationCode(code -> code.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI))
-                .cookies(cookies -> cookies.protection(protection -> protection.password("test-cookie-password")))
+                .cookies(cookies -> cookies.password("test-cookie-password"))
                 .buildPrototype();
     }
 
@@ -1224,7 +1224,7 @@ class OidcAuthorizationResponseProcessorTest {
                         .tokenEndpointUri(issuer.resolve("/token"))
                         .jwksUri(issuer.resolve("/jwks")))
                 .authorizationCode(it -> it.redirectionEndpointUri(redirectionEndpointUri))
-                .cookies(it -> it.protection(protection -> protection.password(cookiePassword)))
+                .cookies(it -> it.password(cookiePassword))
                 .buildPrototype();
     }
 

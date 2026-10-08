@@ -274,7 +274,7 @@ class OidcFeatureLifecycleTest {
                                 .wellKnownUri(issuer.resolve("/.well-known/openid-configuration")))
                         .webClient(WebClientConfig.builder().shareConnectionCache(sharedPool).buildPrototype())
                         .authorizationCode(code -> code.redirectionEndpointUri(URI.create("/oidc/callback")))
-                        .cookies(cookies -> cookies.protection(protection -> protection.password("test-cookie-password")))
+                        .cookies(cookies -> cookies.password("test-cookie-password"))
                         .buildPrototype())
                 .buildPrototype();
     }

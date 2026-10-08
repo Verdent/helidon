@@ -501,7 +501,7 @@ final class KeycloakOidcIntegrationSupport {
                 .userInfo(userInfo -> userInfo.attributeClaimPaths(List.of("email")))
                 .logout(logout -> logout.endSession(_ -> {
                 }))
-                .cookies(cookies -> cookies.protection(protection -> protection.password(COOKIE_PASSWORD)));
+                .cookies(cookies -> cookies.password(COOKIE_PASSWORD));
         tenantCustomizer.accept(tenant);
         return OidcProviderConfig.builder()
                 .putTenant("default", tenant.buildPrototype())

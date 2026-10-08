@@ -245,7 +245,7 @@ class OidcLocalVerificationKeysTest {
                 .endpoints(endpoints -> endpoints.authorizationEndpointUri(issuer.resolve("/authorize"))
                         .tokenEndpointUri(issuer.resolve("/token")).tlsRequired(false))
                 .authorizationCode(code -> code.redirectionEndpointUri(requestState().redirectionEndpointUri()))
-                .cookies(cookies -> cookies.protection(protection -> protection.password("test-cookie-password")))
+                .cookies(cookies -> cookies.password("test-cookie-password"))
                 .buildPrototype();
         withTenant(tenant, context -> {
             assertReady(context);
@@ -317,7 +317,7 @@ class OidcLocalVerificationKeysTest {
                 .endpoints(endpoints -> endpoints.authorizationEndpointUri(issuer.resolve("/authorize"))
                         .tokenEndpointUri(issuer.resolve("/token")).jwksUri(jwksUri).tlsRequired(false))
                 .authorizationCode(code -> code.redirectionEndpointUri(requestState().redirectionEndpointUri()))
-                .cookies(cookies -> cookies.protection(protection -> protection.password("test-cookie-password")))
+                .cookies(cookies -> cookies.password("test-cookie-password"))
                 .buildPrototype();
     }
 

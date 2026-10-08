@@ -242,23 +242,6 @@ class OidcCookieStateHandlerTest {
     }
 
     @Test
-    void explicitSaltIsSharedByReplicasAndIsolatesDeployments() {
-        OidcTenantConfig tenant = tenant(CLIENT_ID, PASSWORD, "AAAAAAAAAAAAAAAAAAAAAA");
-        SetCookie cookie = OidcCookieStateHandler.create(TENANT_ID, tenant)
-                .createAuthenticationRequestCookies(state(), false, Map.of()).getFirst();
-
-        assertThat(OidcCookieStateHandler.create(TENANT_ID, tenant)
-                           .readAuthenticationRequestState(cookie.value(), NOW)
-                           .isPresent(),
-                   is(true));
-        assertThat(OidcCookieStateHandler.create(TENANT_ID,
-                                                 tenant(CLIENT_ID, PASSWORD, "yD6wIno2KCq2znbRzL3aUQ"))
-                           .readAuthenticationRequestState(cookie.value(), NOW)
-                           .isEmpty(),
-                   is(true));
-    }
-
-    @Test
     void tenantRegistrySharesTheLazyCookieHandlerWithTenantContext() {
         OidcTenantConfig tenant = tenant(CLIENT_ID, PASSWORD);
         OidcProviderConfig config = OidcProviderConfig.builder()
@@ -277,16 +260,7 @@ class OidcCookieStateHandlerTest {
     private static OidcTenantConfig tenant(String clientId, String password) {
         return OidcTenantConfig.builder()
                 .clientId(clientId)
-                .cookies(cookies -> cookies.protection(protection -> protection.password(password)))
-                .buildPrototype();
-    }
-
-    private static OidcTenantConfig tenant(String clientId, String password, String salt) {
-        return OidcTenantConfig.builder()
-                .clientId(clientId)
-                .cookies(cookies -> cookies.protection(protection -> protection
-                        .password(password)
-                        .salt(salt)))
+                .cookies(cookies -> cookies.password(password))
                 .buildPrototype();
     }
 

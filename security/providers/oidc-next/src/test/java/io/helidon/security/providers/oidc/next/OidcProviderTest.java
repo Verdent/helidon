@@ -490,7 +490,7 @@ class OidcProviderTest {
     @Test
     void oversizedReturnUriRejectsLoginBeforeRedirect() {
         OidcTenantConfig tenant = authorizationCodeTenant(_ -> { }, builder -> builder.cookies(cookies -> cookies.maxChunks(1)
-                .protection(protection -> protection.password("test-cookie-password"))));
+                .password("test-cookie-password")));
         try (OidcProvider provider = provider(tenant)) {
             for (String query : List.of("a".repeat(3000), "%E2%82%AC".repeat(350))) {
                 AuthenticationResponse response = provider.authenticate(request(null, SecurityEnvironment.builder()
@@ -510,7 +510,7 @@ class OidcProviderTest {
     @Test
     void oversizedReturnUriPreservesInvalidSessionCleanup() {
         OidcTenantConfig tenant = authorizationCodeTenant(_ -> { }, builder -> builder.cookies(cookies -> cookies.maxChunks(1)
-                .protection(protection -> protection.password("test-cookie-password"))));
+                .password("test-cookie-password")));
         try (OidcProvider provider = provider(tenant)) {
             AuthenticationResponse response = provider.authenticate(request(null, SecurityEnvironment.builder()
                     .targetUri(URI.create("https://rp.example/resource?filter=" + "a".repeat(3000)))
@@ -532,7 +532,7 @@ class OidcProviderTest {
     @Test
     void combinedLoginUpdateBudgetIncludesSessionCleanup() {
         OidcTenantConfig tenant = authorizationCodeTenant(_ -> { }, builder -> builder.cookies(cookies ->
-                cookies.maxTotalSize(6000).protection(protection -> protection.password("test-cookie-password"))));
+                cookies.maxTotalSize(6000).password("test-cookie-password")));
         URI original = URI.create("https://rp.example/resource?filter=" + "a".repeat(3000));
         try (OidcProvider provider = provider(tenant)) {
             AuthenticationResponse accepted = provider.authenticate(request(null, SecurityEnvironment.builder()
@@ -563,7 +563,7 @@ class OidcProviderTest {
         for (int limit : List.of(1024, 3800, 4096)) {
             OidcTenantConfig tenant = authorizationCodeTenant(_ -> { }, builder -> builder
                     .cookies(cookies -> cookies.maxCookieSize(limit)
-                            .protection(protection -> protection.password("test-cookie-password"))));
+                            .password("test-cookie-password")));
             try (OidcProvider provider = provider(tenant)) {
                 AuthenticationResponse response = provider.authenticate(request(null, SecurityEnvironment.builder()
                         .targetUri(URI.create("https://rp.example/resource?" + query))
@@ -2093,7 +2093,7 @@ class OidcProviderTest {
                             .scopes(List.of("openid", "profile"));
                     authorizationCodeCustomizer.accept(it);
                 })
-                .cookies(it -> it.protection(protection -> protection.password("test-cookie-password")));
+                .cookies(it -> it.password("test-cookie-password"));
         tenantCustomizer.accept(builder);
         return builder.buildPrototype();
     }
@@ -2109,7 +2109,7 @@ class OidcProviderTest {
                         .scopes(List.of("openid", "profile")))
                 .protectedResource(it -> it.tokenValidation(validation -> validation.method(OidcTokenValidationMethod.JWT)
                                 .audience("api://default")))
-                .cookies(it -> it.protection(protection -> protection.password("test-cookie-password")))
+                .cookies(it -> it.password("test-cookie-password"))
                 .buildPrototype();
     }
 

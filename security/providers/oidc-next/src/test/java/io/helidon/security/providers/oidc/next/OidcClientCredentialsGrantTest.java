@@ -1982,7 +1982,7 @@ class OidcClientCredentialsGrantTest {
                         .tlsRequired(false))
                 .authorizationCode(it -> it.redirectionEndpointUri(URI.create("https://rp.example/oidc/callback")))
                 .userInfo(_ -> { })
-                .cookies(it -> it.protection(protection -> protection.password("test-cookie-password")))
+                .cookies(it -> it.password("test-cookie-password"))
                 .buildPrototype();
     }
 
@@ -1996,7 +1996,7 @@ class OidcClientCredentialsGrantTest {
                         .tlsRequired(false))
                 .authorizationCode(it -> it.redirectionEndpointUri(URI.create("https://rp.example/oidc/callback")))
                 .userInfo(_ -> { })
-                .cookies(it -> it.protection(protection -> protection.password("test-cookie-password")))
+                .cookies(it -> it.password("test-cookie-password"))
                 .buildPrototype();
     }
 

@@ -274,7 +274,7 @@ class OidcAuthorizationCodeTokenExchangeTest {
                         .tlsRequired(false))
                 .authorizationCode(it -> it.redirectionEndpointUri(redirectionEndpointUri)
                         .resources(resources))
-                .cookies(it -> it.protection(protection -> protection.password("test-cookie-password")))
+                .cookies(it -> it.password("test-cookie-password"))
                 .buildPrototype();
         SecurityEnvironment environment = SecurityEnvironment.builder()
                 .targetUri(URI.create("https://rp.example/resource"))
@@ -315,7 +315,7 @@ class OidcAuthorizationCodeTokenExchangeTest {
                         .pushedAuthorizationRequestEndpointUri(pushedAuthorizationRequestEndpointUri)
                         .tlsRequired(false))
                 .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI))
-                .cookies(it -> it.protection(protection -> protection.password("test-cookie-password")))
+                .cookies(it -> it.password("test-cookie-password"))
                 .buildPrototype();
         SecurityEnvironment environment = SecurityEnvironment.builder()
                 .targetUri(URI.create("https://rp.example/resource"))
@@ -379,7 +379,7 @@ class OidcAuthorizationCodeTokenExchangeTest {
                         .tokenEndpointUri(tokenEndpointUri).jwksUri(serverUri.resolve("jwks"))
                         .pushedAuthorizationRequestEndpointUri(pushedAuthorizationRequestEndpointUri).tlsRequired(false))
                 .authorizationCode(code -> code.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI))
-                .cookies(cookies -> cookies.maxChunks(1).protection(protection -> protection.password("test-cookie-password")))
+                .cookies(cookies -> cookies.maxChunks(1).password("test-cookie-password"))
                 .buildPrototype();
         try (OidcProvider provider = OidcProvider.create(OidcProviderConfig.builder().putTenant("default", tenant)
                                                                 .buildPrototype())) {
@@ -538,7 +538,7 @@ class OidcAuthorizationCodeTokenExchangeTest {
                         .pushedAuthorizationRequestEndpointUri(staticPushedAuthorizationRequestEndpointUri)
                         .tlsRequired(false))
                 .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI))
-                .cookies(it -> it.protection(protection -> protection.password("test-cookie-password")))
+                .cookies(it -> it.password("test-cookie-password"))
                 .buildPrototype();
         OidcProviderMetadata wellKnownMetadata = OidcProviderMetadata.fromWellKnownMetadataJson(JsonObject.builder()
                 .set("issuer", ISSUER.toString())
@@ -961,7 +961,7 @@ class OidcAuthorizationCodeTokenExchangeTest {
                                                                                        "oidc-next-sign-public-jwk.json"))
                                                                                .signingKeyId("sign-rsa")
                                                                                .signingAlgorithm("RS256")))
-                                                               .cookies(it -> it.protection(protection -> protection.password("test-cookie-password")))
+                                                               .cookies(it -> it.password("test-cookie-password"))
                                                                .buildPrototype()));
 
         assertThat(thrown.getMessage(), containsString("authorization-code.request-object.signing-jwk"));
@@ -985,7 +985,7 @@ class OidcAuthorizationCodeTokenExchangeTest {
                         .scopes(List.of("openid", "profile"))
                         .prompts(List.of("login"))
                         .resources(List.of("https://api.example.com")))
-                .cookies(it -> it.protection(protection -> protection.password("test-cookie-password")))
+                .cookies(it -> it.password("test-cookie-password"))
                 .buildPrototype();
         OidcProvider provider = OidcProvider.create(OidcProviderConfig.builder()
                                                             .putTenant("default", tenant)
@@ -1042,7 +1042,7 @@ class OidcAuthorizationCodeTokenExchangeTest {
                                         .signingJwk(jwk -> jwk.resourcePath("oidc-next-sign-jwk.json"))
                                         .signingKeyId("sign-rsa")
                                         .signingAlgorithm("RS512")))
-                .cookies(it -> it.protection(protection -> protection.password("test-cookie-password")))
+                .cookies(it -> it.password("test-cookie-password"))
                 .buildPrototype();
         OidcProvider provider = OidcProvider.create(OidcProviderConfig.builder()
                                                             .putTenant("default", tenant)
@@ -1157,7 +1157,7 @@ class OidcAuthorizationCodeTokenExchangeTest {
                         .requestObject(requestObject -> requestObject.mode(OidcRequestObjectMode.REQUIRED)
                                 .signingJwk(jwk -> jwk.resourcePath("oidc-next-sign-jwk.json"))
                                 .signingKeyId("sign-rsa")))
-                .cookies(it -> it.protection(protection -> protection.password("test-cookie-password")))
+                .cookies(it -> it.password("test-cookie-password"))
                 .adapter(adapter)
                 .buildPrototype();
         try (OidcProvider provider = OidcProvider.create(OidcProviderConfig.builder()
@@ -1730,7 +1730,7 @@ class OidcAuthorizationCodeTokenExchangeTest {
                                                                        .tlsRequired(false))
                                                                .authorizationCode(it -> it
                                                                        .redirectionEndpointUri(REDIRECTION_ENDPOINT_URI))
-                                                               .cookies(it -> it.protection(protection -> protection.password("test-cookie-password")))
+                                                               .cookies(it -> it.password("test-cookie-password"))
                                                                .buildPrototype()));
 
         assertThat(thrown.getMessage(), containsString("client-assertion.jwk"));
@@ -2225,7 +2225,7 @@ class OidcAuthorizationCodeTokenExchangeTest {
                             }
                         });
                     }
-                }).cookies(cookies -> cookies.protection(protection -> protection.password("test-cookie-password")))
+                }).cookies(cookies -> cookies.password("test-cookie-password"))
                 .buildPrototype();
     }
 
@@ -2282,7 +2282,7 @@ class OidcAuthorizationCodeTokenExchangeTest {
                         .userInfoEndpointUri(conventionalTlsServerUri.resolve("userinfo")))
                 .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI))
                 .userInfo(_ -> { })
-                .cookies(it -> it.protection(protection -> protection.password("test-cookie-password")))
+                .cookies(it -> it.password("test-cookie-password"))
                 .buildPrototype();
     }
 
@@ -2316,7 +2316,7 @@ class OidcAuthorizationCodeTokenExchangeTest {
                             .tokenEndpointUri(conventionalTlsServerUri.resolve("token"));
                 })
                 .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI))
-                .cookies(it -> it.protection(protection -> protection.password("test-cookie-password")));
+                .cookies(it -> it.password("test-cookie-password"));
         if (userInfo) {
             builder.userInfo(_ -> { });
         }
@@ -2361,7 +2361,7 @@ class OidcAuthorizationCodeTokenExchangeTest {
                         .pushedAuthorizationRequestEndpointUri(pushedAuthorizationRequestEndpointUri)
                         .tlsRequired(false))
                 .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI))
-                .cookies(it -> it.protection(protection -> protection.password("test-cookie-password")))
+                .cookies(it -> it.password("test-cookie-password"))
                 .buildPrototype();
     }
 
@@ -2387,7 +2387,7 @@ class OidcAuthorizationCodeTokenExchangeTest {
                         .tokenEndpointUri(tokenEndpointUri)
                         .tlsRequired(false))
                 .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI))
-                .cookies(it -> it.protection(protection -> protection.password("test-cookie-password")))
+                .cookies(it -> it.password("test-cookie-password"))
                 .buildPrototype();
     }
 
@@ -2423,7 +2423,7 @@ class OidcAuthorizationCodeTokenExchangeTest {
                         .tlsRequired(false))
                 .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI)
                         .resources(authorizationCodeResources))
-                .cookies(it -> it.protection(protection -> protection.password("test-cookie-password")))
+                .cookies(it -> it.password("test-cookie-password"))
                 .buildPrototype();
     }
 
@@ -2447,7 +2447,7 @@ class OidcAuthorizationCodeTokenExchangeTest {
                         .pushedAuthorizationRequestEndpointUri(pushedAuthorizationRequestEndpointUri)
                         .tlsRequired(false))
                 .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI))
-                .cookies(it -> it.protection(protection -> protection.password("test-cookie-password")))
+                .cookies(it -> it.password("test-cookie-password"))
                 .buildPrototype();
     }
 
@@ -2485,7 +2485,7 @@ class OidcAuthorizationCodeTokenExchangeTest {
                                 requestObject.contentEncryptionAlgorithm(contentEncryptionAlgorithm);
                             }
                         }))
-                .cookies(it -> it.protection(protection -> protection.password("test-cookie-password")))
+                .cookies(it -> it.password("test-cookie-password"))
                 .buildPrototype();
     }
 

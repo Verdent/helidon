@@ -80,7 +80,7 @@ class OidcJwkSetConcurrencyTest {
                                     .signingJwk(jwk -> jwk.resourcePath("oidc-next-sign-jwk.json"))
                                     .signingKeyId("sign-rsa").signingAlgorithm("RS256")
                                     .encryptionAlgorithm("RSA-OAEP-256")))
-                    .cookies(cookies -> cookies.protection(protection -> protection.password("test-cookie-password")))
+                    .cookies(cookies -> cookies.password("test-cookie-password"))
                     .jwkSet(config(0, "PT30S")).buildPrototype();
             SecurityEnvironment environment = SecurityEnvironment.builder().targetUri(URI.create("https://rp.example/resource"))
                     .path("/resource").transport("https").build();

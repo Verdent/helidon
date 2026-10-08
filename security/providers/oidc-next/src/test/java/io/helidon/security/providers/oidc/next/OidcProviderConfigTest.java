@@ -383,10 +383,8 @@ class OidcProviderConfigTest {
                         Map.entry("tenants.default.authorization-code.refresh-result-retention", "PT7S"),
                         Map.entry("tenants.default.authorization-code.refresh-result-cache-capacity", "256"),
                         Map.entry("tenants.default.authorization-code.pkce-method", "plain"),
-                        Map.entry("tenants.default.cookies.protection.password",
+                        Map.entry("tenants.default.cookies.password",
                                   "this-password-is-long-enough-for-config-test"),
-                        Map.entry("tenants.default.cookies.protection.salt", "AAAAAAAAAAAAAAAAAAAAAA"),
-                        Map.entry("tenants.default.cookies.protection.iterations", "700000"),
                         Map.entry("tenants.default.protected-resource.token-validation.method", "JWT"),
                         Map.entry("tenants.default.protected-resource.token-validation.audience", AUDIENCE),
                         Map.entry("tenants.default.protected-resource.token-validation.introspection.remote-work."
@@ -501,10 +499,7 @@ class OidcProviderConfigTest {
         assertThat(authorizationCode.refreshResultRetention(), is(Duration.ofSeconds(7)));
         assertThat(authorizationCode.refreshResultCacheCapacity(), is(256));
         assertThat(authorizationCode.pkceMethod(), is(OidcPkceMethod.PLAIN));
-        OidcCookieProtectionConfig cookieProtection = tenant.cookies().protection().orElseThrow();
-        assertThat(cookieProtection.password(), is("this-password-is-long-enough-for-config-test"));
-        assertThat(cookieProtection.salt().orElseThrow(), is("AAAAAAAAAAAAAAAAAAAAAA"));
-        assertThat(cookieProtection.iterations(), is(700_000));
+        assertThat(tenant.cookies().password().orElseThrow(), is("this-password-is-long-enough-for-config-test"));
         assertThat(providerConfig.toString().contains("this-password-is-long-enough-for-config-test"), is(false));
         OidcProtectedResourceConfig protectedResource = tenant.protectedResource().orElseThrow();
         assertThat(protectedResource.enabled(), is(true));
@@ -1102,7 +1097,7 @@ class OidcProviderConfigTest {
                         .userInfoEndpointUri(USER_INFO_ENDPOINT_URI))
                 .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI))
                 .userInfo(it -> it.attributeClaimPaths(List.of("profile.")))
-                .cookies(it -> it.protection(protection -> protection.password("this-password-is-long-enough-for-config-test")))
+                .cookies(it -> it.password("this-password-is-long-enough-for-config-test"))
                 .buildPrototype());
 
         assertThat(thrown.getMessage(), containsString("user-info.attribute-claim-paths"));
@@ -1304,7 +1299,7 @@ class OidcProviderConfigTest {
                         .jwksUri(JWKS_URI))
                 .authorizationCode(OidcAuthorizationCodeConfig.create())
                 .idToken(it -> it.allowedAlgorithms(List.of("RS256", " none ")))
-                .cookies(it -> it.protection(protection -> protection.password("test-cookie-password")))
+                .cookies(it -> it.password("test-cookie-password"))
                 .buildPrototype());
 
         assertThat(thrown.getMessage(), containsString("id-token.allowed-algorithms"));
@@ -1318,7 +1313,7 @@ class OidcProviderConfigTest {
                         .jwksUri(JWKS_URI))
                 .authorizationCode(OidcAuthorizationCodeConfig.create())
                 .idToken(it -> it.allowedAlgorithms(List.of("HS256")))
-                .cookies(it -> it.protection(protection -> protection.password("test-cookie-password")))
+                .cookies(it -> it.password("test-cookie-password"))
                 .buildPrototype());
 
         assertThat(thrown.getMessage(), containsString("id-token.allowed-algorithms"));
@@ -1332,7 +1327,7 @@ class OidcProviderConfigTest {
                         .jwksUri(JWKS_URI))
                 .authorizationCode(OidcAuthorizationCodeConfig.create())
                 .idToken(it -> it.allowedAlgorithms(List.of("hs256")))
-                .cookies(it -> it.protection(protection -> protection.password("test-cookie-password")))
+                .cookies(it -> it.password("test-cookie-password"))
                 .buildPrototype());
 
         assertThat(thrown.getMessage(), containsString("id-token.allowed-algorithms"));
@@ -1349,7 +1344,7 @@ class OidcProviderConfigTest {
                         .jwksUri(JWKS_URI))
                 .authorizationCode(OidcAuthorizationCodeConfig.create())
                 .idToken(it -> it.trustedAdditionalAudiences(List.of("api://shared", " padded ")))
-                .cookies(it -> it.protection(protection -> protection.password("test-cookie-password")))
+                .cookies(it -> it.password("test-cookie-password"))
                 .buildPrototype());
 
         assertThat(thrown.getMessage(), containsString("id-token.trusted-additional-audiences"));
@@ -1365,7 +1360,7 @@ class OidcProviderConfigTest {
                         .jwksUri(JWKS_URI))
                 .authorizationCode(OidcAuthorizationCodeConfig.create())
                 .idToken(it -> it.allowedEncryptionAlgorithms(List.of("RSA-OAEP", " padded ")))
-                .cookies(it -> it.protection(protection -> protection.password("test-cookie-password")))
+                .cookies(it -> it.password("test-cookie-password"))
                 .buildPrototype());
 
         assertThat(thrown.getMessage(), containsString("id-token.allowed-encryption-algorithms"));
@@ -1378,7 +1373,7 @@ class OidcProviderConfigTest {
                         .jwksUri(JWKS_URI))
                 .authorizationCode(OidcAuthorizationCodeConfig.create())
                 .idToken(it -> it.allowedContentEncryptionAlgorithms(List.of("A256GCM", " ")))
-                .cookies(it -> it.protection(protection -> protection.password("test-cookie-password")))
+                .cookies(it -> it.password("test-cookie-password"))
                 .buildPrototype());
 
         assertThat(thrown.getMessage(), containsString("id-token.allowed-content-encryption-algorithms"));
@@ -1394,7 +1389,7 @@ class OidcProviderConfigTest {
                         .jwksUri(JWKS_URI))
                 .authorizationCode(OidcAuthorizationCodeConfig.create())
                 .idToken(it -> it.allowedEncryptionAlgorithms(List.of("RSA1_5")))
-                .cookies(it -> it.protection(protection -> protection.password("test-cookie-password")))
+                .cookies(it -> it.password("test-cookie-password"))
                 .buildPrototype());
 
         assertThat(thrown.getMessage(), containsString("id-token.allowed-encryption-algorithms"));
@@ -1768,7 +1763,7 @@ class OidcProviderConfigTest {
                 .endpoints(it -> it.authorizationEndpointUri(URI.create("https://issuer.example/authorize"))
                         .tokenEndpointUri(TOKEN_ENDPOINT_URI))
                 .authorizationCode(OidcAuthorizationCodeConfig.create())
-                .cookies(it -> it.protection(protection -> protection.password("test-cookie-password")))
+                .cookies(it -> it.password("test-cookie-password"))
                 .buildPrototype();
 
         assertThat(tenant.authorizationCode().orElseThrow().redirectionEndpointUri().orElseThrow(),
@@ -1783,7 +1778,7 @@ class OidcProviderConfigTest {
                 .endpoints(it -> it.authorizationEndpointUri(AUTHORIZATION_ENDPOINT_URI)
                         .tokenEndpointUri(TOKEN_ENDPOINT_URI))
                 .authorizationCode(it -> it.redirectionEndpointUri(URI.create("/oidc/callback")))
-                .cookies(it -> it.protection(protection -> protection.password("test-cookie-password")))
+                .cookies(it -> it.password("test-cookie-password"))
                 .buildPrototype();
 
         assertThat(localRedirectionEndpointTenant.authorizationCode()
@@ -1832,7 +1827,7 @@ class OidcProviderConfigTest {
                         .tokenEndpointUri(TOKEN_ENDPOINT_URI)
                         .tlsRequired(false))
                 .authorizationCode(it -> it.redirectionEndpointUri(URI.create("http://rp.example/oidc/callback")))
-                .cookies(it -> it.protection(protection -> protection.password("test-cookie-password")))
+                .cookies(it -> it.password("test-cookie-password"))
                 .buildPrototype();
 
         assertThat(tenant.endpoints().tlsRequired(), is(false));
@@ -1847,7 +1842,7 @@ class OidcProviderConfigTest {
                         .tokenEndpointUri(TOKEN_ENDPOINT_URI)
                         .pushedAuthorizationRequestEndpointUri(URI.create("http://issuer.example/par")))
                 .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI))
-                .cookies(it -> it.protection(protection -> protection.password("test-cookie-password")))
+                .cookies(it -> it.password("test-cookie-password"))
                 .buildPrototype());
 
         assertThat(thrown.getMessage(), containsString("pushed-authorization-request-endpoint-uri must use https"));
@@ -1861,7 +1856,7 @@ class OidcProviderConfigTest {
                         .pushedAuthorizationRequestEndpointUri(URI.create("http://issuer.example/par"))
                         .tlsRequired(false))
                 .authorizationCode(it -> it.redirectionEndpointUri(URI.create("http://rp.example/oidc/callback")))
-                .cookies(it -> it.protection(protection -> protection.password("test-cookie-password")))
+                .cookies(it -> it.password("test-cookie-password"))
                 .buildPrototype());
         assertThat(thrown.getMessage(), containsString("pushed-authorization-request-endpoint-uri must use https"));
         assertThat(thrown.getMessage().contains("unless endpoints.tls-required"), is(false));
@@ -1873,7 +1868,7 @@ class OidcProviderConfigTest {
                         .tokenEndpointUri(TOKEN_ENDPOINT_URI)
                         .pushedAuthorizationRequestEndpointUri(URI.create("https://issuer.example/par#fragment")))
                 .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI))
-                .cookies(it -> it.protection(protection -> protection.password("test-cookie-password")))
+                .cookies(it -> it.password("test-cookie-password"))
                 .buildPrototype());
 
         assertThat(thrown.getMessage(), containsString("pushed-authorization-request-endpoint-uri"));
@@ -1889,7 +1884,7 @@ class OidcProviderConfigTest {
                         .tokenEndpointUri(TOKEN_ENDPOINT_URI))
                 .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI)
                         .scopes(List.of("email")))
-                .cookies(it -> it.protection(protection -> protection.password("test-cookie-password")))
+                .cookies(it -> it.password("test-cookie-password"))
                 .buildPrototype());
 
         assertThat(thrown.getMessage(), containsString("openid scope"));
@@ -1904,7 +1899,7 @@ class OidcProviderConfigTest {
                         .tokenEndpointUri(TOKEN_ENDPOINT_URI))
                 .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI)
                         .scopes(List.of("openid", "profile read")))
-                .cookies(it -> it.protection(protection -> protection.password("test-cookie-password")))
+                .cookies(it -> it.password("test-cookie-password"))
                 .buildPrototype());
 
         assertThat(thrown.getMessage(), containsString("authorization-code.scopes"));
@@ -1917,7 +1912,7 @@ class OidcProviderConfigTest {
                         .tokenEndpointUri(TOKEN_ENDPOINT_URI))
                 .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI)
                         .scopes(List.of("openid", "openid")))
-                .cookies(it -> it.protection(protection -> protection.password("test-cookie-password")))
+                .cookies(it -> it.password("test-cookie-password"))
                 .buildPrototype());
 
         assertThat(thrown.getMessage(), containsString("duplicate scope"));
@@ -1932,7 +1927,7 @@ class OidcProviderConfigTest {
                         .tokenEndpointUri(TOKEN_ENDPOINT_URI))
                 .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI)
                         .prompts(List.of("login consent")))
-                .cookies(it -> it.protection(protection -> protection.password("test-cookie-password")))
+                .cookies(it -> it.password("test-cookie-password"))
                 .buildPrototype());
 
         assertThat(thrown.getMessage(), containsString("authorization-code.prompts"));
@@ -1945,7 +1940,7 @@ class OidcProviderConfigTest {
                         .tokenEndpointUri(TOKEN_ENDPOINT_URI))
                 .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI)
                         .prompts(List.of("none", "login")))
-                .cookies(it -> it.protection(protection -> protection.password("test-cookie-password")))
+                .cookies(it -> it.password("test-cookie-password"))
                 .buildPrototype());
 
         assertThat(thrown.getMessage(), containsString("cannot combine none"));
@@ -1957,7 +1952,7 @@ class OidcProviderConfigTest {
                         .tokenEndpointUri(TOKEN_ENDPOINT_URI))
                 .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI)
                         .prompts(List.of("login", "login")))
-                .cookies(it -> it.protection(protection -> protection.password("test-cookie-password")))
+                .cookies(it -> it.password("test-cookie-password"))
                 .buildPrototype());
 
         assertThat(thrown.getMessage(), containsString("duplicate prompt"));
@@ -1970,7 +1965,7 @@ class OidcProviderConfigTest {
                 .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI)
                         .scopes(List.of("openid", "offline_access"))
                         .prompts(List.of("none")))
-                .cookies(it -> it.protection(protection -> protection.password("test-cookie-password")))
+                .cookies(it -> it.password("test-cookie-password"))
                 .buildPrototype());
 
         assertThat(thrown.getMessage(), containsString("cannot contain none"));
@@ -1986,7 +1981,7 @@ class OidcProviderConfigTest {
                         .tokenEndpointUri(TOKEN_ENDPOINT_URI))
                 .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI)
                         .resources(List.of(" https://api.example.com")))
-                .cookies(it -> it.protection(protection -> protection.password("test-cookie-password")))
+                .cookies(it -> it.password("test-cookie-password"))
                 .buildPrototype());
 
         assertThat(thrown.getMessage(), containsString("authorization-code.resources"));
@@ -1999,7 +1994,7 @@ class OidcProviderConfigTest {
                         .tokenEndpointUri(TOKEN_ENDPOINT_URI))
                 .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI)
                         .resources(List.of("/api")))
-                .cookies(it -> it.protection(protection -> protection.password("test-cookie-password")))
+                .cookies(it -> it.password("test-cookie-password"))
                 .buildPrototype());
 
         assertThat(thrown.getMessage(), containsString("absolute resource URIs"));
@@ -2011,7 +2006,7 @@ class OidcProviderConfigTest {
                         .tokenEndpointUri(TOKEN_ENDPOINT_URI))
                 .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI)
                         .resources(List.of("https://api.example.com#fragment")))
-                .cookies(it -> it.protection(protection -> protection.password("test-cookie-password")))
+                .cookies(it -> it.password("test-cookie-password"))
                 .buildPrototype());
 
         assertThat(thrown.getMessage(), containsString("URI fragments"));
@@ -2023,7 +2018,7 @@ class OidcProviderConfigTest {
                         .tokenEndpointUri(TOKEN_ENDPOINT_URI))
                 .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI)
                         .resources(List.of("https://api.example.com", "https://api.example.com")))
-                .cookies(it -> it.protection(protection -> protection.password("test-cookie-password")))
+                .cookies(it -> it.password("test-cookie-password"))
                 .buildPrototype());
 
         assertThat(thrown.getMessage(), containsString("duplicate resource"));
@@ -2038,7 +2033,7 @@ class OidcProviderConfigTest {
                         .tokenEndpointUri(TOKEN_ENDPOINT_URI))
                 .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI)
                         .resources(List.of("https://api.example/items?filter[x]=y")))
-                .cookies(it -> it.protection(protection -> protection.password("test-cookie-password")))
+                .cookies(it -> it.password("test-cookie-password"))
                 .buildPrototype());
 
         assertThat(thrown.getMessage(), containsString("authorization-code.resources"));
@@ -2046,7 +2041,7 @@ class OidcProviderConfigTest {
     }
 
     @Test
-    void authorizationCodeFlowRequiresCookieProtection() {
+    void authorizationCodeFlowRequiresCookiePassword() {
         IllegalArgumentException thrown = assertThrows(IllegalArgumentException.class, () -> OidcTenantConfig.builder()
                 .issuer(ISSUER.toString())
                 .clientId("client-id")
@@ -2055,14 +2050,13 @@ class OidcProviderConfigTest {
                 .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI))
                 .buildPrototype());
 
-        assertThat(thrown.getMessage(), containsString("cookies.protection"));
+        assertThat(thrown.getMessage(), containsString("cookies.password"));
     }
 
     @Test
-    void cookieProtectionRequiresClientId() {
+    void cookiePasswordRequiresClientId() {
         IllegalArgumentException thrown = assertThrows(IllegalArgumentException.class, () -> OidcTenantConfig.builder()
-                .cookies(cookies -> cookies.protection(protection -> protection
-                        .password("this-password-is-long-enough")))
+                .cookies(cookies -> cookies.password("this-password-is-long-enough"))
                 .buildPrototype());
 
         assertThat(thrown.getMessage(), containsString("client-id must be configured"));
@@ -2084,18 +2078,10 @@ class OidcProviderConfigTest {
         assertInvalidCookies(cookies -> cookies.authenticationRequestCookieName("auth-generation")
                         .localAuthenticationCookieName("auth"),
                              "derived browser-session-generation cookie names must be different");
-        assertInvalidCookies(cookies -> cookies.protection(protection -> protection.password(" ")),
-                             "cookies.protection.password must contain between 16 and 1024 characters");
-        assertInvalidCookies(cookies -> cookies.protection(protection -> protection.password("too-short")),
-                             "cookies.protection.password must contain between 16 and 1024 characters");
-        assertInvalidCookies(cookies -> cookies.protection(protection -> protection
-                                     .password("this-password-is-long-enough")
-                                     .salt("not-canonical-base64url")),
-                             "cookies.protection.salt must be the canonical, unpadded Base64URL encoding");
-        assertInvalidCookies(cookies -> cookies.protection(protection -> protection
-                                     .password("this-password-is-long-enough")
-                                     .iterations(599_999)),
-                             "cookies.protection.iterations must be between 600000 and 10000000");
+        assertInvalidCookies(cookies -> cookies.password(" "),
+                             "cookies.password must contain between 16 and 1024 characters");
+        assertInvalidCookies(cookies -> cookies.password("too-short"),
+                             "cookies.password must contain between 16 and 1024 characters");
     }
 
     @Test
@@ -2120,7 +2106,7 @@ class OidcProviderConfigTest {
                         .tokenEndpointUri(TOKEN_ENDPOINT_URI)
                         .tlsRequired(false))
                 .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI))
-                .cookies(it -> it.protection(protection -> protection.password("test-cookie-password")))
+                .cookies(it -> it.password("test-cookie-password"))
                 .buildPrototype();
 
         assertThat(tenant.endpoints().tlsRequired(), is(false));
@@ -2134,7 +2120,7 @@ class OidcProviderConfigTest {
                 .endpoints(it -> it.authorizationEndpointUri(AUTHORIZATION_ENDPOINT_URI)
                         .tokenEndpointUri(URI.create("http://issuer.example/token")))
                 .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI))
-                .cookies(it -> it.protection(protection -> protection.password("test-cookie-password")))
+                .cookies(it -> it.password("test-cookie-password"))
                 .buildPrototype());
 
         assertThat(thrown.getMessage(), containsString("token-endpoint-uri must use https"));
@@ -2149,7 +2135,7 @@ class OidcProviderConfigTest {
                         .tokenEndpointUri(URI.create("http://issuer.example/token"))
                         .tlsRequired(false))
                 .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI))
-                .cookies(it -> it.protection(protection -> protection.password("test-cookie-password")))
+                .cookies(it -> it.password("test-cookie-password"))
                 .buildPrototype();
 
         assertThat(tenant.endpoints().tlsRequired(), is(false));
@@ -2163,7 +2149,7 @@ class OidcProviderConfigTest {
                 .endpoints(it -> it.authorizationEndpointUri(AUTHORIZATION_ENDPOINT_URI)
                         .tokenEndpointUri(URI.create("https://issuer.example/token#fragment")))
                 .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI))
-                .cookies(it -> it.protection(protection -> protection.password("test-cookie-password")))
+                .cookies(it -> it.password("test-cookie-password"))
                 .buildPrototype());
 
         assertThat(thrown.getMessage(), containsString("token-endpoint-uri must not include a fragment"));
@@ -2224,7 +2210,7 @@ class OidcProviderConfigTest {
                         .tokenEndpointUri(TOKEN_ENDPOINT_URI))
                 .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI))
                 .logout(logout -> logout.localEndpointUri(URI.create("/oidc/callback")))
-                .cookies(it -> it.protection(protection -> protection.password("test-cookie-password")))
+                .cookies(it -> it.password("test-cookie-password"))
                 .buildPrototype());
 
         assertThat(thrown.getMessage(), containsString("redirection-endpoint-uri"));
@@ -2289,7 +2275,7 @@ class OidcProviderConfigTest {
                 .clientId("client-id")
                 .endpoints(it -> it.endSessionEndpointUri(END_SESSION_ENDPOINT_URI))
                 .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI))
-                .cookies(it -> it.protection(protection -> protection.password("test-cookie-password")))
+                .cookies(it -> it.password("test-cookie-password"))
                 .logout(logout -> logout.endSession(endSession -> endSession
                         .postLogoutRedirectUri(URI.create("https://rp.example/logged-out#fragment"))))
                 .buildPrototype());
@@ -2304,7 +2290,7 @@ class OidcProviderConfigTest {
                 .clientId("client-id")
                 .endpoints(it -> it.endSessionEndpointUri(END_SESSION_ENDPOINT_URI))
                 .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI))
-                .cookies(it -> it.protection(protection -> protection.password("test-cookie-password")))
+                .cookies(it -> it.password("test-cookie-password"))
                 .logout(logout -> logout.endSession(endSession -> endSession
                         .addAllowedPostLogoutRedirectUri(URI.create("http://rp.example/logged-out"))))
                 .buildPrototype());
@@ -2342,7 +2328,7 @@ class OidcProviderConfigTest {
                         .tokenEndpointUri(TOKEN_ENDPOINT_URI))
                 .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI)
                         .pkceRequired(false))
-                .cookies(it -> it.protection(protection -> protection.password("test-cookie-password")))
+                .cookies(it -> it.password("test-cookie-password"))
                 .buildPrototype();
 
         OidcAuthorizationCodeConfig authorizationCode = tenant.authorizationCode().orElseThrow();
@@ -2375,7 +2361,7 @@ class OidcProviderConfigTest {
                         it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI).pkceS256SupportAssured(true);
                         incompatibleSetting.accept(it);
                     })
-                    .cookies(it -> it.protection(protection -> protection.password("test-cookie-password")))
+                    .cookies(it -> it.password("test-cookie-password"))
                     .buildPrototype());
 
             assertThat(thrown.getMessage(), containsString("pkce-s256-support-assured"));
@@ -2392,7 +2378,7 @@ class OidcProviderConfigTest {
                         .tokenEndpointUri(TOKEN_ENDPOINT_URI))
                 .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI)
                         .pkceRequired(false))
-                .cookies(it -> it.protection(protection -> protection.password("test-cookie-password")))
+                .cookies(it -> it.password("test-cookie-password"))
                 .buildPrototype());
 
         assertThat(thrown.getMessage(), containsString("pkce-required"));
@@ -2409,7 +2395,7 @@ class OidcProviderConfigTest {
                         .tokenEndpointUri(TOKEN_ENDPOINT_URI))
                 .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI)
                         .pkceMethod(OidcPkceMethod.PLAIN))
-                .cookies(it -> it.protection(protection -> protection.password("test-cookie-password")))
+                .cookies(it -> it.password("test-cookie-password"))
                 .buildPrototype());
 
         assertThat(thrown.getMessage(), containsString("pkce-method"));
@@ -2439,7 +2425,7 @@ class OidcProviderConfigTest {
                         .userInfoEndpointUri(URI.create("http://issuer.example/userinfo")))
                 .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI))
                 .userInfo(_ -> { })
-                .cookies(it -> it.protection(protection -> protection.password("test-cookie-password")))
+                .cookies(it -> it.password("test-cookie-password"))
                 .buildPrototype());
 
         assertThat(thrown.getMessage(), containsString("user-info-endpoint-uri must use https"));
@@ -2456,7 +2442,7 @@ class OidcProviderConfigTest {
                         .tlsRequired(false))
                 .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI))
                 .userInfo(_ -> { })
-                .cookies(it -> it.protection(protection -> protection.password("test-cookie-password")))
+                .cookies(it -> it.password("test-cookie-password"))
                 .buildPrototype();
 
         assertThat(tenant.endpoints().tlsRequired(), is(false));
@@ -2473,7 +2459,7 @@ class OidcProviderConfigTest {
                         .userInfoEndpointUri(URI.create("https://issuer.example/userinfo#fragment")))
                 .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI))
                 .userInfo(_ -> { })
-                .cookies(it -> it.protection(protection -> protection.password("test-cookie-password")))
+                .cookies(it -> it.password("test-cookie-password"))
                 .buildPrototype());
 
         assertThat(thrown.getMessage(), containsString("user-info-endpoint-uri must not include a fragment"));
@@ -2489,7 +2475,7 @@ class OidcProviderConfigTest {
                 .endpoints(it -> it.authorizationEndpointUri(AUTHORIZATION_ENDPOINT_URI)
                         .tokenEndpointUri(TOKEN_ENDPOINT_URI))
                 .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI))
-                .cookies(it -> it.protection(protection -> protection.password("test-cookie-password")))
+                .cookies(it -> it.password("test-cookie-password"))
                 .buildPrototype();
 
         assertThat(tenant.tokenEndpointAuthenticationMethod()
@@ -2507,7 +2493,7 @@ class OidcProviderConfigTest {
                 .endpoints(it -> it.authorizationEndpointUri(AUTHORIZATION_ENDPOINT_URI)
                         .tokenEndpointUri(TOKEN_ENDPOINT_URI))
                 .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI))
-                .cookies(it -> it.protection(protection -> protection.password("test-cookie-password")))
+                .cookies(it -> it.password("test-cookie-password"))
                 .buildPrototype();
 
         OidcTenantConfig privateKeyJwt = OidcTenantConfig.builder()
@@ -2522,7 +2508,7 @@ class OidcProviderConfigTest {
                 .endpoints(it -> it.authorizationEndpointUri(AUTHORIZATION_ENDPOINT_URI)
                         .tokenEndpointUri(TOKEN_ENDPOINT_URI))
                 .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI))
-                .cookies(it -> it.protection(protection -> protection.password("test-cookie-password")))
+                .cookies(it -> it.password("test-cookie-password"))
                 .buildPrototype();
 
         assertThat(clientSecretJwt.tokenEndpointAuthenticationMethod().orElseThrow(),
@@ -2561,7 +2547,7 @@ class OidcProviderConfigTest {
                 .endpoints(it -> it.authorizationEndpointUri(AUTHORIZATION_ENDPOINT_URI)
                         .tokenEndpointUri(TOKEN_ENDPOINT_URI))
                 .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI))
-                .cookies(it -> it.protection(protection -> protection.password("test-cookie-password")))
+                .cookies(it -> it.password("test-cookie-password"))
                 .buildPrototype();
         OidcTenantConfig selfSignedTlsClientAuth = OidcTenantConfig.builder()
                 .issuer(ISSUER.toString())
@@ -2571,7 +2557,7 @@ class OidcProviderConfigTest {
                 .endpoints(it -> it.authorizationEndpointUri(AUTHORIZATION_ENDPOINT_URI)
                         .tokenEndpointUri(TOKEN_ENDPOINT_URI))
                 .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI))
-                .cookies(it -> it.protection(protection -> protection.password("test-cookie-password")))
+                .cookies(it -> it.password("test-cookie-password"))
                 .buildPrototype();
 
         assertThat(tlsClientAuth.tokenEndpointAuthenticationMethod().orElseThrow(),
@@ -2591,7 +2577,7 @@ class OidcProviderConfigTest {
                 .endpoints(it -> it.authorizationEndpointUri(AUTHORIZATION_ENDPOINT_URI)
                         .tokenEndpointUri(TOKEN_ENDPOINT_URI))
                 .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI))
-                .cookies(it -> it.protection(protection -> protection.password("test-cookie-password")))
+                .cookies(it -> it.password("test-cookie-password"))
                 .buildPrototype();
 
         assertThat(tenant.outboundMutualTls(), is(true));
@@ -2647,7 +2633,7 @@ class OidcProviderConfigTest {
                                 .tokenEndpointUri(URI.create("http://issuer.example/token"))
                                 .tlsRequired(false))
                         .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI))
-                        .cookies(it -> it.protection(protection -> protection.password("test-cookie-password")))
+                        .cookies(it -> it.password("test-cookie-password"))
                         .buildPrototype());
         assertThat(token.getMessage(), containsString("token-endpoint-uri must use https"));
 
@@ -2663,7 +2649,7 @@ class OidcProviderConfigTest {
                                 .pushedAuthorizationRequestEndpointUri(URI.create("http://issuer.example/par"))
                                 .tlsRequired(false))
                         .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI))
-                        .cookies(it -> it.protection(protection -> protection.password("test-cookie-password")))
+                        .cookies(it -> it.password("test-cookie-password"))
                         .buildPrototype());
         assertThat(par.getMessage(), containsString("pushed-authorization-request-endpoint-uri must use https"));
 
@@ -2680,7 +2666,7 @@ class OidcProviderConfigTest {
                                 .tlsRequired(false))
                         .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI))
                         .userInfo(_ -> { })
-                        .cookies(it -> it.protection(protection -> protection.password("test-cookie-password")))
+                        .cookies(it -> it.password("test-cookie-password"))
                         .buildPrototype());
         assertThat(userInfo.getMessage(), containsString("user-info-endpoint-uri must use https"));
 
@@ -2742,7 +2728,7 @@ class OidcProviderConfigTest {
                 .endpoints(it -> it.authorizationEndpointUri(AUTHORIZATION_ENDPOINT_URI)
                         .tokenEndpointUri(TOKEN_ENDPOINT_URI))
                 .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI))
-                .cookies(it -> it.protection(protection -> protection.password("test-cookie-password")))
+                .cookies(it -> it.password("test-cookie-password"))
                 .buildPrototype());
 
         assertThat(thrown.getMessage(), containsString("webclient.tls"));
@@ -2755,7 +2741,7 @@ class OidcProviderConfigTest {
                 .endpoints(it -> it.authorizationEndpointUri(AUTHORIZATION_ENDPOINT_URI)
                         .tokenEndpointUri(TOKEN_ENDPOINT_URI))
                 .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI))
-                .cookies(it -> it.protection(protection -> protection.password("test-cookie-password")))
+                .cookies(it -> it.password("test-cookie-password"))
                 .buildPrototype());
 
         assertThat(thrown.getMessage(), containsString("webclient.tls must be enabled"));
@@ -2769,7 +2755,7 @@ class OidcProviderConfigTest {
                         .tokenEndpointUri(URI.create("http://issuer.example/token"))
                         .tlsRequired(false))
                 .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI))
-                .cookies(it -> it.protection(protection -> protection.password("test-cookie-password")))
+                .cookies(it -> it.password("test-cookie-password"))
                 .buildPrototype());
 
         assertThat(thrown.getMessage(), containsString("token-endpoint-uri must use https"));
@@ -2810,7 +2796,7 @@ class OidcProviderConfigTest {
                 .endpoints(it -> it.authorizationEndpointUri(AUTHORIZATION_ENDPOINT_URI)
                         .tokenEndpointUri(TOKEN_ENDPOINT_URI))
                 .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI))
-                .cookies(it -> it.protection(protection -> protection.password("test-cookie-password")))
+                .cookies(it -> it.password("test-cookie-password"))
                 .buildPrototype());
 
         assertThat(thrown.getMessage(), containsString("client-secret"));
@@ -2825,7 +2811,7 @@ class OidcProviderConfigTest {
                 .endpoints(it -> it.authorizationEndpointUri(AUTHORIZATION_ENDPOINT_URI)
                         .tokenEndpointUri(TOKEN_ENDPOINT_URI))
                 .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI))
-                .cookies(it -> it.protection(protection -> protection.password("test-cookie-password")))
+                .cookies(it -> it.password("test-cookie-password"))
                 .buildPrototype());
 
         assertThat(thrown.getMessage(), containsString("client-secret"));
@@ -2837,7 +2823,7 @@ class OidcProviderConfigTest {
                 .endpoints(it -> it.authorizationEndpointUri(AUTHORIZATION_ENDPOINT_URI)
                         .tokenEndpointUri(TOKEN_ENDPOINT_URI))
                 .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI))
-                .cookies(it -> it.protection(protection -> protection.password("test-cookie-password")))
+                .cookies(it -> it.password("test-cookie-password"))
                 .buildPrototype());
 
         assertThat(thrown.getMessage(), containsString("client-assertion.jwk"));
@@ -2857,7 +2843,7 @@ class OidcProviderConfigTest {
                 .endpoints(it -> it.authorizationEndpointUri(AUTHORIZATION_ENDPOINT_URI)
                         .tokenEndpointUri(TOKEN_ENDPOINT_URI))
                 .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI))
-                .cookies(it -> it.protection(protection -> protection.password("test-cookie-password")))
+                .cookies(it -> it.password("test-cookie-password"))
                 .buildPrototype());
 
         assertThat(thrown.getMessage(), containsString("client-assertion.algorithm"));
@@ -2871,7 +2857,7 @@ class OidcProviderConfigTest {
                 .endpoints(it -> it.authorizationEndpointUri(AUTHORIZATION_ENDPOINT_URI)
                         .tokenEndpointUri(TOKEN_ENDPOINT_URI))
                 .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI))
-                .cookies(it -> it.protection(protection -> protection.password("test-cookie-password")))
+                .cookies(it -> it.password("test-cookie-password"))
                 .buildPrototype());
 
         assertThat(thrown.getMessage(), containsString("client-assertion.algorithm"));
@@ -2888,7 +2874,7 @@ class OidcProviderConfigTest {
                 .endpoints(it -> it.authorizationEndpointUri(AUTHORIZATION_ENDPOINT_URI)
                         .tokenEndpointUri(TOKEN_ENDPOINT_URI))
                 .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI))
-                .cookies(it -> it.protection(protection -> protection.password("test-cookie-password")))
+                .cookies(it -> it.password("test-cookie-password"))
                 .buildPrototype());
 
         assertThat(thrown.getMessage(), containsString("client-assertion.algorithm"));
@@ -2903,7 +2889,7 @@ class OidcProviderConfigTest {
                         .tokenEndpointUri(TOKEN_ENDPOINT_URI))
                 .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI)
                         .requestObject(requestObject -> requestObject.mode(OidcRequestObjectMode.REQUIRED)))
-                .cookies(it -> it.protection(protection -> protection.password("test-cookie-password")))
+                .cookies(it -> it.password("test-cookie-password"))
                 .buildPrototype());
 
         assertThat(thrown.getMessage(), containsString("authorization-code.request-object.signing-jwk"));
@@ -2915,7 +2901,7 @@ class OidcProviderConfigTest {
                         .tokenEndpointUri(TOKEN_ENDPOINT_URI))
                 .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI)
                         .requestObject(requestObject -> requestObject.lifetime(Duration.ZERO)))
-                .cookies(it -> it.protection(protection -> protection.password("test-cookie-password")))
+                .cookies(it -> it.password("test-cookie-password"))
                 .buildPrototype());
 
         assertThat(thrown.getMessage(), containsString("authorization-code.request-object.lifetime"));
@@ -2930,7 +2916,7 @@ class OidcProviderConfigTest {
                                 .signingJwk(jwk -> jwk.resourcePath("oidc-next-sign-jwk.json"))
                                 .signingKeyId("sign-rsa")
                                 .signingAlgorithm("none")))
-                .cookies(it -> it.protection(protection -> protection.password("test-cookie-password")))
+                .cookies(it -> it.password("test-cookie-password"))
                 .buildPrototype());
 
         assertThat(thrown.getMessage(), containsString("authorization-code.request-object.signing-algorithm"));
@@ -2945,7 +2931,7 @@ class OidcProviderConfigTest {
                                 .signingJwk(jwk -> jwk.resourcePath("oidc-next-sign-jwk.json"))
                                 .signingKeyId("sign-rsa")
                                 .signingAlgorithm("HS256")))
-                .cookies(it -> it.protection(protection -> protection.password("test-cookie-password")))
+                .cookies(it -> it.password("test-cookie-password"))
                 .buildPrototype());
 
         assertThat(thrown.getMessage(), containsString("authorization-code.request-object.signing-algorithm"));
@@ -2960,7 +2946,7 @@ class OidcProviderConfigTest {
                                 .signingJwk(jwk -> jwk.resourcePath("oidc-next-sign-jwk.json"))
                                 .signingKeyId(" sign-rsa")
                                 .signingAlgorithm("RS256")))
-                .cookies(it -> it.protection(protection -> protection.password("test-cookie-password")))
+                .cookies(it -> it.password("test-cookie-password"))
                 .buildPrototype());
 
         assertThat(thrown.getMessage(), containsString("authorization-code.request-object.signing-key-id"));
@@ -2973,7 +2959,7 @@ class OidcProviderConfigTest {
                 .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI)
                         .requestObject(requestObject -> requestObject
                                 .signingJwk(jwk -> jwk.uri(URI.create("https://issuer.example/request-object-jwk")))))
-                .cookies(it -> it.protection(protection -> protection.password("test-cookie-password")))
+                .cookies(it -> it.password("test-cookie-password"))
                 .buildPrototype());
 
         assertThat(thrown.getMessage(), containsString("authorization-code.request-object.signing-jwk"));
@@ -3024,7 +3010,7 @@ class OidcProviderConfigTest {
                 .issuer(ISSUER.toString())
                 .clientId("client-id")
                 .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI))
-                .cookies(it -> it.protection(protection -> protection.password("test-cookie-password")))
+                .cookies(it -> it.password("test-cookie-password"))
                 .buildPrototype();
 
         assertThat(tenant.endpoints().wellKnownUri().isEmpty(), is(true));
@@ -3052,7 +3038,7 @@ class OidcProviderConfigTest {
                         .tokenEndpointUri(TOKEN_ENDPOINT_URI))
                 .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI))
                 .endpointPolicy(it -> it.acceptedCredentials(List.of(OidcEndpointCredential.BEARER_TOKEN)))
-                .cookies(it -> it.protection(protection -> protection.password("test-cookie-password")))
+                .cookies(it -> it.password("test-cookie-password"))
                 .buildPrototype());
 
         assertThat(thrown.getMessage(), containsString("bearer-token"));
@@ -3092,7 +3078,7 @@ class OidcProviderConfigTest {
                         .audience(AUDIENCE)))
                 .endpointPolicy(it -> it.acceptedCredentials(List.of(OidcEndpointCredential.BEARER_TOKEN))
                         .authenticationFailureResponse(OidcAuthenticationFailureResponse.AUTHORIZATION_CODE_REDIRECT))
-                .cookies(it -> it.protection(protection -> protection.password("test-cookie-password")))
+                .cookies(it -> it.password("test-cookie-password"))
                 .buildPrototype());
 
         assertThat(thrown.getMessage(), containsString("authentication-cookie"));
@@ -3365,7 +3351,7 @@ class OidcProviderConfigTest {
                 .endpoints(endpoints -> endpoints.authorizationEndpointUri(AUTHORIZATION_ENDPOINT_URI)
                         .tokenEndpointUri(TOKEN_ENDPOINT_URI))
                 .authorizationCode(code -> code.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI))
-                .cookies(cookies -> cookies.protection(protection -> protection.password("test-cookie-password")))
+                .cookies(cookies -> cookies.password("test-cookie-password"))
                 .buildPrototype();
     }
 
@@ -3479,7 +3465,7 @@ class OidcProviderConfigTest {
                         .tokenEndpointUri(TOKEN_ENDPOINT_URI)
                         .userInfoEndpointUri(USER_INFO_ENDPOINT_URI))
                 .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI))
-                .cookies(it -> it.protection(protection -> protection.password("this-password-is-long-enough-for-config-test")));
+                .cookies(it -> it.password("this-password-is-long-enough-for-config-test"));
     }
 
     private static OidcTenantConfig.Builder requestObjectTenantBuilder(
@@ -3492,7 +3478,7 @@ class OidcProviderConfigTest {
                         .jwksUri(JWKS_URI))
                 .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI)
                         .requestObject(customizer))
-                .cookies(it -> it.protection(protection -> protection.password("this-password-is-long-enough-for-config-test")));
+                .cookies(it -> it.password("this-password-is-long-enough-for-config-test"));
     }
 
     private static void assertInvalidRequestObject(Consumer<OidcRequestObjectConfig.Builder> customizer,

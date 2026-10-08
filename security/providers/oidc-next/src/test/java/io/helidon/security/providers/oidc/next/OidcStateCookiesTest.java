@@ -187,7 +187,7 @@ class OidcStateCookiesTest {
 
     private static OidcTenantConfig tenant(Consumer<OidcCookieConfig.Builder> customizer) {
         return OidcTenantConfig.builder().clientId("client").cookies(cookies -> {
-            cookies.protection(protection -> protection.password("chunk-state-password"));
+            cookies.password("chunk-state-password");
             customizer.accept(cookies);
         }).buildPrototype();
     }

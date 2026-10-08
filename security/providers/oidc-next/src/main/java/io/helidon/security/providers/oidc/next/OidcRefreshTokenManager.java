@@ -32,20 +32,21 @@ final class OidcRefreshTokenManager {
     RefreshResult refreshIfNeeded(OidcLocalAuthenticationResult authenticationResult,
                                   OidcTenantContext tenantContext,
                                   Instant now,
-                                  Map<String, List<String>> sourceCookies) {
+                                  Map<String, List<String>> sourceCookies,
+                                  boolean requested) {
         Optional<Instant> accessTokenExpiresAt = authenticationResult.accessTokenExpiresAt();
-        if (accessTokenExpiresAt.isEmpty()) {
-            return RefreshResult.authenticated(authenticationResult);
-        }
-
-        Instant expiresAt = accessTokenExpiresAt.orElseThrow();
-        if (OidcTokenLifetime.activeAt(expiresAt, now, OidcTokenLifetime.DEFAULT_ACCESS_TOKEN_RENEWAL_MARGIN)) {
+        // RFC 6749 section 1.5 also permits obtaining additional access tokens with the original grant.
+        // An explicit request therefore does not require a known access-token expiration time.
+        if (!requested && (accessTokenExpiresAt.isEmpty()
+                || OidcTokenLifetime.activeAt(accessTokenExpiresAt.orElseThrow(),
+                                              now,
+                                              OidcTokenLifetime.DEFAULT_ACCESS_TOKEN_RENEWAL_MARGIN))) {
             return RefreshResult.authenticated(authenticationResult);
         }
 
         Optional<String> refreshToken = authenticationResult.refreshToken();
         if (refreshToken.isEmpty()) {
-            return keepOrRemoveLocalAuthentication(authenticationResult, expiresAt, now);
+            return keepOrRemoveLocalAuthentication(authenticationResult, accessTokenExpiresAt, now);
         }
 
         RefreshResult result = tenantContext.refreshCoordinator()
@@ -53,17 +54,17 @@ final class OidcRefreshTokenManager {
                          cachedResult -> cachedResult.authenticationActiveAt(now),
                          () -> refresh(authenticationResult,
                                        tenantContext,
-                                       expiresAt,
+                                       accessTokenExpiresAt,
                                        now,
                                        refreshToken.orElseThrow(),
                                        sourceCookies),
-                         () -> refreshRejected(authenticationResult, expiresAt, now));
+                         () -> refreshRejected(authenticationResult, accessTokenExpiresAt, now));
         return result.authenticationActiveAt(now) ? result : RefreshResult.serviceUnavailable();
     }
 
     private RefreshResult refresh(OidcLocalAuthenticationResult authenticationResult,
                                   OidcTenantContext tenantContext,
-                                  Instant expiresAt,
+                                  Optional<Instant> accessTokenExpiresAt,
                                   Instant now,
                                   String refreshToken,
                                   Map<String, List<String>> sourceCookies) {
@@ -71,13 +72,8 @@ final class OidcRefreshTokenManager {
                 .refreshAccessToken(refreshToken);
         if (tokenResult.succeeded()) {
             OidcTokenResponse tokenResponse = tokenResult.tokenResponse().orElseThrow();
-            if (tokenResponse.expiresIn().isEmpty()) {
-                return refreshFailure(authenticationResult,
-                                      expiresAt,
-                                      now,
-                                      "Token Endpoint refresh response did not include expires_in",
-                                      Optional.empty());
-            }
+            // RFC 6749 section 5.1 recommends expires_in but does not require it. Preserve unknown access-token
+            // expiry instead of treating a valid refresh response as an error or borrowing the ID Token's lifetime.
             // This RP is not the resource server for an arbitrary refreshed access token. Its issuer, keys, and
             // audience can differ from those configured for inbound API Bearer tokens. Keep it opaque; the validated
             // ID Token (and, when enabled, UserInfo subject binding) remains the source of browser identity.
@@ -92,7 +88,7 @@ final class OidcRefreshTokenManager {
                                                          now);
                 if (!idTokenValidationResult.succeeded()) {
                     return refreshFailure(authenticationResult,
-                                          expiresAt,
+                                          accessTokenExpiresAt,
                                           now,
                                           idTokenValidationResult.errorDescription()
                                                   .orElse("Refreshed ID Token validation failed"),
@@ -107,7 +103,7 @@ final class OidcRefreshTokenManager {
                                                                                       now);
             if (!userInfoResult.succeeded()) {
                 return refreshFailure(authenticationResult,
-                                      expiresAt,
+                                      accessTokenExpiresAt,
                                       now,
                                       userInfoResult.diagnosticDescription().orElseThrow() + " during refresh",
                                       userInfoResult.cause());
@@ -129,27 +125,27 @@ final class OidcRefreshTokenManager {
         }
 
         logFailure(tokenResult.description(), tokenResult.cause());
-        if (invalidGrant(tokenResult) || accessTokenExpired(expiresAt, now)) {
+        if (invalidGrant(tokenResult) || accessTokenExpired(accessTokenExpiresAt, now)) {
             return RefreshResult.removeLocalAuthentication();
         }
         return RefreshResult.authenticated(authenticationResult);
     }
 
     private RefreshResult refreshRejected(OidcLocalAuthenticationResult current,
-                                          Instant expiresAt,
+                                          Optional<Instant> accessTokenExpiresAt,
                                           Instant now) {
         boolean interrupted = Thread.currentThread().isInterrupted();
         logFailure(interrupted
                            ? "Interrupted while waiting for local authentication refresh"
                            : "Local authentication refresh capacity is exhausted",
                    Optional.empty());
-        return accessTokenExpired(expiresAt, now)
+        return accessTokenExpired(accessTokenExpiresAt, now)
                 ? RefreshResult.serviceUnavailable()
                 : RefreshResult.authenticated(current);
     }
 
     private RefreshResult refreshFailure(OidcLocalAuthenticationResult current,
-                                         Instant expiresAt,
+                                         Optional<Instant> accessTokenExpiresAt,
                                          Instant now,
                                          String description,
                                          Optional<Throwable> cause) {
@@ -159,13 +155,13 @@ final class OidcRefreshTokenManager {
             // do not keep a possibly spent source refresh token or authenticate unvalidated replacement tokens.
             return RefreshResult.unavailableAfterRefresh();
         }
-        return keepOrRemoveLocalAuthentication(current, expiresAt, now);
+        return keepOrRemoveLocalAuthentication(current, accessTokenExpiresAt, now);
     }
 
     private RefreshResult keepOrRemoveLocalAuthentication(OidcLocalAuthenticationResult current,
-                                                          Instant expiresAt,
+                                                          Optional<Instant> accessTokenExpiresAt,
                                                           Instant now) {
-        return accessTokenExpired(expiresAt, now)
+        return accessTokenExpired(accessTokenExpiresAt, now)
                 ? RefreshResult.removeLocalAuthentication()
                 : RefreshResult.authenticated(current);
     }
@@ -205,8 +201,8 @@ final class OidcRefreshTokenManager {
         return OidcLocalAuthenticationResult.fromStoredValues(state);
     }
 
-    private boolean accessTokenExpired(Instant expiresAt, Instant now) {
-        return !now.isBefore(expiresAt);
+    private boolean accessTokenExpired(Optional<Instant> accessTokenExpiresAt, Instant now) {
+        return accessTokenExpiresAt.filter(expiresAt -> !now.isBefore(expiresAt)).isPresent();
     }
 
     private void logFailure(String description, Optional<Throwable> cause) {

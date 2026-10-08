@@ -69,6 +69,25 @@ final class OidcResponseFactory {
         return builder.build();
     }
 
+    static AuthenticationResponse refreshTokenUnavailable() {
+        return AuthenticationResponse.builder()
+                .status(SecurityResponse.SecurityStatus.FAILURE)
+                .statusCode(Status.CONFLICT_409.code())
+                .description("Local authentication has no refresh token")
+                .build();
+    }
+
+    static AuthenticationResponse refreshUnavailable(List<String> localAuthenticationRemovalCookie) {
+        AuthenticationResponse.Builder builder = AuthenticationResponse.builder()
+                .status(SecurityResponse.SecurityStatus.FAILURE)
+                .statusCode(Status.SERVICE_UNAVAILABLE_503.code())
+                .description("OIDC refresh is unavailable");
+        if (!localAuthenticationRemovalCookie.isEmpty()) {
+            builder.responseHeader(HeaderNames.SET_COOKIE.defaultCase(), localAuthenticationRemovalCookie);
+        }
+        return builder.build();
+    }
+
     static AuthenticationResponse bearerTokenValidationNotConfigured(String realm) {
         return AuthenticationResponse.builder()
                 .status(SecurityResponse.SecurityStatus.FAILURE)

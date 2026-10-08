@@ -20,6 +20,8 @@ import java.net.URI;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 import io.helidon.common.uri.UriQuery;
 
@@ -42,6 +44,16 @@ final class OidcEndpointUris {
                 .filter(OidcAuthorizationCodeConfig::enabled)
                 .map(OidcEndpointUris::redirectionEndpointUri)
                 .toList();
+    }
+
+    static Set<String> backChannelLogoutPaths(OidcProviderConfig config) {
+        return config.tenants().values().stream()
+                .filter(OidcTenantConfig::enabled)
+                .flatMap(tenant -> tenant.logout().stream())
+                .filter(OidcLogoutConfig::enabled)
+                .flatMap(logout -> logout.backChannel().stream())
+                .map(backChannel -> OidcUri.path(backChannel.uri()))
+                .collect(Collectors.toUnmodifiableSet());
     }
 
     static boolean redirectionEndpointMatches(URI callbackUri, UriQuery callbackQuery, URI expectedUri) {
@@ -187,6 +199,19 @@ final class OidcEndpointUris {
          */
         validateHttpsEndpointUri("end-session-endpoint-uri", uri, tlsRequired, false);
         validateNoFragment("end-session-endpoint-uri", uri);
+    }
+
+    static void validateBackChannelLogoutUri(URI uri, boolean tlsRequired) {
+        /*
+         * Spec: OpenID Connect Back-Channel Logout 1.0, 2.2 Indicating RP Support
+         * https://openid.net/specs/openid-connect-backchannel-1_0.html#BCRegistration
+         * The registered URI must be absolute and must not contain a fragment. Query parameters are permitted.
+         */
+        validateHttpsEndpointUri("logout.back-channel.uri", uri, tlsRequired, false);
+        if (uri.getHost() == null || uri.getRawUserInfo() != null) {
+            throw new IllegalArgumentException("logout.back-channel.uri must identify an HTTP server: " + uri);
+        }
+        validateNoFragment("logout.back-channel.uri", uri);
     }
 
     static void validateUserInfoEndpointUri(URI uri, boolean tlsRequired) {

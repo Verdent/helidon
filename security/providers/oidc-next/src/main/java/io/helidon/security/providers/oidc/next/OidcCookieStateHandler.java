@@ -47,6 +47,7 @@ import io.helidon.json.JsonObject;
 import io.helidon.json.JsonParser;
 import io.helidon.security.jwt.Jwt;
 import io.helidon.security.jwt.SignedJwt;
+import io.helidon.security.providers.oidc.next.spi.OidcBackChannelLogoutStore;
 
 final class OidcCookieStateHandler {
     static final int MAX_COOKIE_CHUNKS = 16;
@@ -591,6 +592,14 @@ final class OidcCookieStateHandler {
         result.accessTokenExpiresAt()
                 .ifPresent(accessTokenExpiresAt -> builder.set("access_token_expires_at",
                                                                accessTokenExpiresAt.toString()));
+        result.backChannelSession().ifPresent(session -> {
+            JsonObject.Builder binding = JsonObject.builder()
+                    .set("original_issued_at", session.identity().originalIssuedAt().toString())
+                    .set("incarnation", session.marker().incarnation())
+                    .set("subject_generation", session.marker().subjectGeneration());
+            session.identity().sid().ifPresent(sid -> binding.set("sid", sid));
+            builder.set("back_channel", binding.build());
+        });
         return builder.build();
     }
 
@@ -626,6 +635,17 @@ final class OidcCookieStateHandler {
         Instant createdAt = Instant.parse(json.stringValue("created_at").orElseThrow());
         Instant expiresAt = Instant.parse(json.stringValue("expires_at").orElseThrow());
         Optional<Instant> accessTokenExpiresAt = json.stringValue("access_token_expires_at").map(Instant::parse);
+        Optional<OidcBackChannelLogoutStore.Session> backChannelSession = json.objectValue("back_channel")
+                .map(binding -> new OidcBackChannelLogoutStore.Session(
+                        new OidcBackChannelLogoutStore.Identity(
+                                tenantId,
+                                jwt.issuer().orElseThrow(),
+                                jwt.subject().orElseThrow(),
+                                binding.stringValue("sid"),
+                                Instant.parse(binding.stringValue("original_issued_at").orElseThrow()),
+                                expiresAt),
+                        new OidcBackChannelLogoutStore.Marker(binding.stringValue("incarnation").orElseThrow(),
+                                                               binding.stringValue("subject_generation").orElseThrow())));
         OidcLocalAuthenticationState state = OidcLocalAuthenticationState.builder()
                 .tenantId(tenantId)
                 .idToken(idToken)
@@ -638,6 +658,7 @@ final class OidcCookieStateHandler {
                 .createdAt(createdAt)
                 .expiresAt(expiresAt)
                 .accessTokenExpiresAt(accessTokenExpiresAt)
+                .backChannelSession(backChannelSession)
                 .buildPrototype();
         return OidcLocalAuthenticationResult.fromStoredValues(state);
     }

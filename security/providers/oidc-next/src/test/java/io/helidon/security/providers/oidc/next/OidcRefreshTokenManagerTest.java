@@ -58,6 +58,7 @@ import io.helidon.security.jwt.Jwt;
 import io.helidon.security.jwt.SignedJwt;
 import io.helidon.security.jwt.jwk.JwkKeys;
 import io.helidon.security.providers.common.TokenCredential;
+import io.helidon.security.providers.oidc.next.spi.OidcBackChannelLogoutStore;
 import io.helidon.webclient.api.HttpClientResponse;
 import io.helidon.webclient.api.WebClient;
 import io.helidon.webserver.WebServer;
@@ -1167,6 +1168,80 @@ class OidcRefreshTokenManagerTest {
     }
 
     @Test
+    void refreshedCookieRetainsBackChannelLogoutBindingAndRevocationBlocksFurtherRefresh(URI serverUri) {
+        Instant now = Instant.now();
+        Instant refreshedExpiration = now.plusSeconds(120).truncatedTo(ChronoUnit.SECONDS);
+        String sid = "op-session-original";
+        String refreshedIdToken = signedIdToken(it -> it.nonce(null)
+                .addPayloadClaim("sid", sid)
+                .expirationTime(refreshedExpiration));
+        responseBody = refreshResponse(REFRESHED_ACCESS_TOKEN,
+                                       ROTATED_REFRESH_TOKEN,
+                                       "openid email",
+                                       600,
+                                       refreshedIdToken).toString();
+        OidcTenantConfig tenant = backChannelTenant(serverUri);
+        try (OidcProvider provider = provider(tenant)) {
+            SetCookie source = boundBackChannelCookie(provider, tenant, now, sid);
+            OidcBackChannelLogoutStore store = provider.tenantRuntimeRegistry().logoutStore("default").orElseThrow();
+
+            AuthenticationResponse refreshed = authenticate(provider, source);
+
+            assertThat(refreshed.status(), is(SecurityResponse.SecurityStatus.SUCCESS));
+            OidcLocalAuthenticationResult stored = storedLocalAuthenticationResult(refreshed, tenant);
+            assertThat(stored.expiresAt(), is(refreshedExpiration));
+            OidcBackChannelLogoutStore.Session session = stored.backChannelSession().orElseThrow();
+            assertThat(session.identity().expiresAt(), is(refreshedExpiration));
+            assertThat(session.identity().sid(), is(Optional.of(sid)));
+            assertThat(TOKEN_REQUEST_COUNT.get(), is(1));
+
+            SetCookie refreshedCookie = refreshed.responseHeaders().get(HeaderNames.SET_COOKIE.defaultCase())
+                    .stream().map(SetCookie::parse)
+                    .filter(cookie -> cookie.name().equals(tenant.cookies().localAuthenticationCookieName()))
+                    .findFirst().orElseThrow();
+            store.revoke(new OidcBackChannelLogoutStore.LogoutEvent("default",
+                                                                    ISSUER.toString(),
+                                                                    Optional.of(SUBJECT),
+                                                                    Optional.of(sid),
+                                                                    "logout-after-refresh",
+                                                                    now,
+                                                                    now.plusSeconds(120)),
+                         now.plusSeconds(3600));
+
+            AuthenticationResponse rejected = refreshOnDemand(provider, refreshedCookie);
+            assertThat(rejected.status(), is(SecurityResponse.SecurityStatus.FAILURE));
+            assertThat(rejected.statusCode().orElseThrow(), is(Status.UNAUTHORIZED_401_CODE));
+            assertThat(TOKEN_REQUEST_COUNT.get(), is(1));
+            assertThat(rejected.responseHeaders().get(HeaderNames.SET_COOKIE.defaultCase())
+                               .stream().map(SetCookie::parse).allMatch(cookie -> cookie.value().isEmpty()), is(true));
+        }
+    }
+
+    @Test
+    void refreshRejectsChangedOpSessionIdWhenBackChannelLogoutEnabled(URI serverUri) {
+        String refreshedIdToken = signedIdToken(it -> it.nonce(null)
+                .addPayloadClaim("sid", "other-op-session"));
+        responseBody = refreshResponse(REFRESHED_ACCESS_TOKEN,
+                                       ROTATED_REFRESH_TOKEN,
+                                       "openid email",
+                                       600,
+                                       refreshedIdToken).toString();
+        OidcTenantConfig tenant = backChannelTenant(serverUri);
+        try (OidcProvider provider = provider(tenant)) {
+            SetCookie source = boundBackChannelCookie(provider, tenant, Instant.now(), "original-op-session");
+
+            AuthenticationResponse rejected = authenticate(provider, source);
+
+            assertThat(rejected.status(), is(SecurityResponse.SecurityStatus.FAILURE));
+            assertThat(rejected.statusCode().orElseThrow(), is(Status.SERVICE_UNAVAILABLE_503_CODE));
+            assertThat(rejected.user().isEmpty(), is(true));
+            assertThat(TOKEN_REQUEST_COUNT.get(), is(1));
+            assertThat(rejected.responseHeaders().get(HeaderNames.SET_COOKIE.defaultCase())
+                               .stream().map(SetCookie::parse).allMatch(cookie -> cookie.value().isEmpty()), is(true));
+        }
+    }
+
+    @Test
     void refreshedIdTokenWithMatchingNonceAndAuthenticationTimeIsAccepted(URI serverUri) {
         String refreshedIdToken = signedIdToken(it -> it.addPayloadClaim("auth_time", AUTHENTICATION_TIME));
         responseBody = refreshResponse(REFRESHED_ACCESS_TOKEN,
@@ -1381,6 +1456,13 @@ class OidcRefreshTokenManagerTest {
         return tenant(serverUri, List.of());
     }
 
+    private static OidcTenantConfig backChannelTenant(URI serverUri) {
+        return OidcTenantConfig.builder(tenant(serverUri))
+                .logout(logout -> logout.backChannel(backChannel -> backChannel
+                        .uri(URI.create("http://localhost/oidc/backchannel"))))
+                .buildPrototype();
+    }
+
     private static OidcTenantConfig tenantWithAuthorizationCodeResources(URI serverUri) {
         return tenant(serverUri, List.of("https://api.example.com", "urn:example:contacts"));
     }
@@ -1546,6 +1628,27 @@ class OidcRefreshTokenManagerTest {
                                                        Instant expiresAt,
                                                        Instant accessTokenExpiresAt) {
         return localAuthenticationCookie(tenant, createdAt, expiresAt, accessTokenExpiresAt, OLD_REFRESH_TOKEN);
+    }
+
+    private static SetCookie boundBackChannelCookie(OidcProvider provider,
+                                                    OidcTenantConfig tenant,
+                                                    Instant now,
+                                                    String sid) {
+        SetCookie source = localAuthenticationCookie(tenant,
+                                                     now.minusSeconds(60),
+                                                     now.plusSeconds(3600),
+                                                     now.minusSeconds(1),
+                                                     OLD_REFRESH_TOKEN,
+                                                     jwt -> jwt.addPayloadClaim("sid", sid));
+        OidcCookieStateHandler handler = OidcCookieStateHandler.create("default", tenant);
+        OidcLocalAuthenticationResult unbound = handler.readLocalAuthenticationResult(
+                Map.of(source.name(), List.of(source.value())),
+                now,
+                OidcIdTokenDecryptor.create(tenant)).orElseThrow();
+        OidcBackChannelLogoutStore store = provider.tenantRuntimeRegistry().logoutStore("default").orElseThrow();
+        OidcLocalAuthenticationResult bound = unbound.withBackChannelSession(
+                OidcBackChannelSessionSupport.begin(unbound, store, false));
+        return handler.createLocalAuthenticationResultCookies(bound, Map.of(), now).getFirst();
     }
 
     private static SetCookie localAuthenticationCookie(OidcTenantConfig tenant,

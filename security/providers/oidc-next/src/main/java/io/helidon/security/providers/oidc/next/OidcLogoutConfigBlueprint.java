@@ -53,4 +53,13 @@ interface OidcLogoutConfigBlueprint {
      */
     @Option.Configured
     Optional<OidcEndSessionConfig> endSession();
+
+    /**
+     * OP-initiated Back-Channel Logout configuration. When omitted, no back-channel endpoint is registered and local
+     * authentication does not consult a revocation store.
+     *
+     * @return back-channel logout configuration
+     */
+    @Option.Configured("back-channel")
+    Optional<OidcBackChannelLogoutConfig> backChannel();
 }

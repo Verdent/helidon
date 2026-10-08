@@ -23,6 +23,7 @@ import java.util.Objects;
 import java.util.Optional;
 
 import io.helidon.json.JsonObject;
+import io.helidon.security.providers.oidc.next.spi.OidcBackChannelLogoutStore;
 
 final class OidcRefreshTokenManager {
     private static final System.Logger LOGGER = System.getLogger(OidcRefreshTokenManager.class.getName());
@@ -33,7 +34,8 @@ final class OidcRefreshTokenManager {
                                   OidcTenantContext tenantContext,
                                   Instant now,
                                   Map<String, List<String>> sourceCookies,
-                                  boolean requested) {
+                                  boolean requested,
+                                  Optional<OidcBackChannelLogoutStore> logoutStore) {
         Optional<Instant> accessTokenExpiresAt = authenticationResult.accessTokenExpiresAt();
         // RFC 6749 section 1.5 also permits obtaining additional access tokens with the original grant.
         // An explicit request therefore does not require a known access-token expiration time.
@@ -57,7 +59,8 @@ final class OidcRefreshTokenManager {
                                        accessTokenExpiresAt,
                                        now,
                                        refreshToken.orElseThrow(),
-                                       sourceCookies),
+                                       sourceCookies,
+                                       logoutStore),
                          () -> refreshRejected(authenticationResult, accessTokenExpiresAt, now));
         return result.authenticationActiveAt(now) ? result : RefreshResult.serviceUnavailable();
     }
@@ -67,7 +70,8 @@ final class OidcRefreshTokenManager {
                                   Optional<Instant> accessTokenExpiresAt,
                                   Instant now,
                                   String refreshToken,
-                                  Map<String, List<String>> sourceCookies) {
+                                  Map<String, List<String>> sourceCookies,
+                                  Optional<OidcBackChannelLogoutStore> logoutStore) {
         OidcTokenEndpointResult tokenResult = tenantContext.endpointClient()
                 .refreshAccessToken(refreshToken);
         if (tokenResult.succeeded()) {
@@ -97,6 +101,25 @@ final class OidcRefreshTokenManager {
                 idToken = idTokenValidationResult.validatedToken().orElseThrow();
             }
 
+            Optional<OidcBackChannelLogoutStore.Session> backChannelSession = authenticationResult.backChannelSession();
+            if (logoutStore.isPresent()) {
+                try {
+                    if (refreshedIdToken.isPresent()) {
+                        backChannelSession = Optional.of(OidcBackChannelSessionSupport.afterRefresh(
+                                authenticationResult, idToken.jwt(), logoutStore.orElseThrow()));
+                    } else if (OidcBackChannelSessionSupport.revoked(authenticationResult, logoutStore.orElseThrow())) {
+                        return RefreshResult.removeLocalAuthentication();
+                    }
+                } catch (OidcBackChannelSessionSupport.SessionRevokedException _) {
+                    return RefreshResult.removeLocalAuthentication();
+                } catch (IllegalArgumentException | OidcBackChannelSessionSupport.StoreUnavailableException e) {
+                    logFailure("Refreshed OP session cannot be verified for back-channel logout", Optional.of(e));
+                    // A successful grant may have rotated the source refresh token. Never authenticate the old cookie
+                    // or issue a replacement after revocation state becomes unavailable or its sid changes.
+                    return RefreshResult.unavailableAfterRefresh();
+                }
+            }
+
             OidcUserInfoSupport.Result userInfoResult = OidcUserInfoSupport.userInfo(tenantContext,
                                                                                       tokenResponse.accessToken(),
                                                                                       idToken,
@@ -113,7 +136,8 @@ final class OidcRefreshTokenManager {
                                                                tokenResponse,
                                                                idToken,
                                                                userInfoResult.userInfo(),
-                                                               now);
+                                                               now,
+                                                               backChannelSession);
             try {
                 return RefreshResult.refreshed(refreshed,
                                                tenantContext.cookieStateHandler()
@@ -170,7 +194,8 @@ final class OidcRefreshTokenManager {
                                                   OidcTokenResponse tokenResponse,
                                                   OidcValidatedIdToken idToken,
                                                   Optional<JsonObject> userInfo,
-                                                  Instant refreshedAt) {
+                                                  Instant refreshedAt,
+                                                  Optional<OidcBackChannelLogoutStore.Session> backChannelSession) {
         /*
          * Spec: RFC 6749, 6 Refreshing an Access Token
          * https://www.rfc-editor.org/rfc/rfc6749.html#section-6
@@ -185,6 +210,12 @@ final class OidcRefreshTokenManager {
                 .orElse(current.expiresAt());
         Optional<Instant> accessTokenExpiresAt = tokenResponse.expiresIn()
                 .map(seconds -> OidcTokenLifetime.expiresAt(refreshedAt, seconds));
+        Optional<OidcBackChannelLogoutStore.Session> updatedBackChannelSession = backChannelSession.map(session -> {
+            OidcBackChannelLogoutStore.Identity original = session.identity();
+            return new OidcBackChannelLogoutStore.Session(new OidcBackChannelLogoutStore.Identity(
+                    original.tenantId(), original.issuer(), original.subject(), original.sid(),
+                    original.originalIssuedAt(), expiresAt), session.marker());
+        });
         OidcLocalAuthenticationState state = OidcLocalAuthenticationState.builder()
                 .tenantId(current.tenantId())
                 .idToken(idToken)
@@ -197,6 +228,7 @@ final class OidcRefreshTokenManager {
                 .createdAt(refreshedAt)
                 .expiresAt(expiresAt)
                 .accessTokenExpiresAt(accessTokenExpiresAt)
+                .backChannelSession(updatedBackChannelSession)
                 .buildPrototype();
         return OidcLocalAuthenticationResult.fromStoredValues(state);
     }

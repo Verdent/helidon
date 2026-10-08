@@ -26,6 +26,7 @@ The current implementation supports:
 - Local authentication result storage in protected cookies.
 - Local OIDC logout endpoint that removes OIDC cookies.
 - RP-Initiated Logout redirect to the OpenID Provider End Session Endpoint.
+- OP-initiated Back-Channel Logout with an in-memory revocation store by default or an application-provided shared store.
 - Refresh-token based local authentication renewal.
 - Refreshed access tokens remain opaque to the browser client, even when the tenant also protects an API.
 - Validation of refreshed ID Tokens when the Token Endpoint returns a new ID Token.
@@ -53,6 +54,9 @@ The supported standards surface is intentionally scoped:
 - OpenID Connect Core 1.0: Authorization Code Flow, Authentication Request construction, ID Token validation, encrypted
   ID Token decryption before validation, JSON, signed, encrypted, and nested JWT UserInfo retrieval, offline access
   prompt handling, and JWT client authentication. Implicit Flow, Hybrid Flow, and OP behavior are not implemented.
+- OpenID Connect Back-Channel Logout 1.0: a tenant-specific signed Logout Token receiver for Authorization Code Flow
+  browser sessions. Helidon records session- or subject-scoped revocations; it does not implement Front-Channel Logout
+  or iFrame-based Session Management.
 - OpenID Connect Discovery 1.0 and OAuth 2.0 Authorization Server Metadata, RFC 8414: metadata loading and validation for
   issuer, endpoint, JWKS, client-authentication, PKCE, PAR, JAR, Token Exchange, mTLS aliases, logout, and UserInfo
   capabilities. The provider derives the OpenID Connect discovery URI from `issuer`; configure an OAuth authorization
@@ -1870,6 +1874,68 @@ OidcProviderConfig config = OidcProviderConfig.builder()
         .buildPrototype();
 ```
 
+## OP-Initiated Back-Channel Logout
+
+To receive a direct logout notification from an OpenID Provider, configure a per-tenant `logout.back-channel.uri` and
+register that same absolute HTTPS URI as the client's `backchannel_logout_uri` at the OP. This feature requires browser
+Authorization Code Flow and protected OIDC cookies. It is independent of `logout.end-session`, which sends the browser
+*to* the OP rather than receiving a notification *from* it.
+
+```yaml
+security:
+  providers:
+    - oidc-next:
+        issuer: "https://issuer.example"
+        client-id: "${OIDC_CLIENT_ID}"
+        authorization-code:
+          redirection-endpoint-uri: "https://app.example/oidc/callback"
+        logout:
+          back-channel:
+            uri: "https://app.example/oidc/backchannel"
+        cookies:
+          password: "${OIDC_COOKIE_PASSWORD}"
+```
+
+`OidcFeature.create(provider)` must share the provider's tenant runtime when using the default store. The configured
+URI registers a POST route that accepts a form-encoded `logout_token` from the OP without a browser cookie or a
+same-origin `Origin` header. Core bounds the form body to 1 MiB and validates the Logout Token before recording a
+revocation; a valid token returns HTTP 200, invalid or failed logout returns HTTP 400, and responses use
+`Cache-Control: no-store`. A `sid` notification revokes one OP session, while a `sub`-only notification revokes
+existing sessions for that issuer/subject, not later new logins. On the next browser request the RP rejects the revoked
+cookie **before** it can refresh or propagate its
+access token. This does not remotely revoke access tokens already accepted by another resource server.
+
+The built-in store exists **only in memory** and keeps no session or revocation file. After a restart, still-valid
+protected browser cookies continue to work: previously recorded revocations are forgotten, including a logout for a
+cookie whose browser has not yet returned to receive its clearing response. This is a deliberate continuity tradeoff,
+not a guarantee of Back-Channel Logout enforcement across restarts. The default is suitable only for one provider
+runtime on one server, not load-balanced replicas: another replica cannot see the first replica's revocations. For
+logout enforcement across restarts or instances, provide a shared, strongly consistent
+`OidcBackChannelLogoutStore` implementation via the Java builder or an explicitly selected
+`OidcBackChannelLogoutStoreProvider`. The HTTP feature and authentication provider must consult the same backing
+store. An independent `OidcFeature.create(config)` refuses the default per-runtime memory store for this reason.
+The built-in store holds at most 100,000 live markers per tenant; if capacity is exhausted, it fails closed until
+restart, which forgets those markers. Store failures fail closed for browser authentication while the store is running
+and are never acknowledged as a successful logout POST.
+If a custom store later recovers after a failed POST, the OP must retry the event or the operator must invalidate
+outstanding sessions by rotating that store's incarnation; recovery alone cannot recreate a lost notification.
+
+`logout.back-channel.session-required` defaults to `false`; setting it to `true` requires `sid` in both initial ID
+Tokens and received Logout Tokens, as agreed in the client registration. The `remote-work` subtree reuses the normal
+OIDC admission limits for body processing, JWT verification, and any remote store operation. Protected cookies minted
+before this feature was enabled lack its store incarnation and are rejected once it is enabled.
+
+`protected-resource.token-validation.method: INTROSPECTION` validates incoming Bearer access tokens; it does not
+introspect the tokens inside browser authentication cookies. Back-Channel Logout still checks the store on browser
+requests for such tenants, because an OP is not required to invalidate an existing access token on session logout.
+Bearer requests validated by introspection do not consult the Back-Channel Logout store.
+
+Back-Channel Logout section 2.7 recommends revoking refresh tokens issued without `offline_access`. A cookie-only
+session stores the refresh token in the browser, so a server-to-server notification cannot retrieve and revoke that
+token immediately without an additional secure token index. This implementation prevents the RP from using that
+cookie or its refresh token on subsequent requests; it does **not** claim immediate RP-driven refresh-token
+revocation. An application requiring that property must arrange it with its OP or a separate secure token store.
+
 ## Endpoint Client Authentication
 
 `token-endpoint-auth-method` controls how the client authenticates to the Token Endpoint for Authorization Code Flow,
@@ -3299,6 +3365,7 @@ Logout options:
 | `enabled` | Whether local logout endpoint handling is enabled when `logout` is configured. Defaults to `true`. |
 | `local-endpoint-uri` | Local logout endpoint URI registered by `OidcFeature`. Defaults to `/oidc/logout`. |
 | `end-session` | RP-Initiated Logout End Session request configuration. If omitted, logout is local-only. |
+| `back-channel` | OP-initiated signed Logout Token receiver; absent by default. Uses a volatile in-memory store unless explicitly configured otherwise. |
 
 End Session options:
 
@@ -3312,6 +3379,15 @@ End Session options:
 When `id-token-hint-required` is `false`, `client-id` is required and sent as `client_id` if `id_token_hint` is omitted.
 Post-logout redirect URI values must use HTTPS unless `endpoints.tls-required` is disabled and must not contain
 fragments.
+
+Back-Channel Logout options:
+
+| Key | Description |
+| --- | --- |
+| `uri` | Required absolute public RP URI registered as `backchannel_logout_uri`; HTTP POST route uses its path. No fragment. |
+| `session-required` | Require `sid` in OP ID and Logout Tokens; matches `backchannel_logout_session_required`. Defaults to `false`. |
+| `remote-work` | Bounded concurrent/queued work and interruptible admission timeout; reuses `OidcRemoteWorkConfig` defaults. |
+| `store` | Explicitly selected custom `OidcBackChannelLogoutStore`; absent means per-runtime in-memory storage that forgets revocations but accepts still-valid cookies after restart. |
 
 Common outbound target options:
 

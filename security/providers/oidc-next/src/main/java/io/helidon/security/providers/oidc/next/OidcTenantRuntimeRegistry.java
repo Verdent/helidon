@@ -26,6 +26,7 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.ReentrantLock;
 
 import io.helidon.security.ProviderRequest;
+import io.helidon.security.providers.oidc.next.spi.OidcBackChannelLogoutStore;
 
 final class OidcTenantRuntimeRegistry {
     private static final System.Logger LOGGER = System.getLogger(OidcTenantRuntimeRegistry.class.getName());
@@ -36,6 +37,8 @@ final class OidcTenantRuntimeRegistry {
     private final Clock clock;
     private final ConcurrentMap<String, TenantContextSlot> contexts = new ConcurrentHashMap<>();
     private final ConcurrentMap<String, OidcCookieStateHandler> cookieStateHandlers = new ConcurrentHashMap<>();
+    private final ConcurrentMap<String, OidcBackChannelLogoutStore> logoutStores = new ConcurrentHashMap<>();
+    private final ConcurrentMap<String, OidcRemoteWorkLimiter> logoutWorkLimiters = new ConcurrentHashMap<>();
     private final ReentrantLock lifecycleLock = new ReentrantLock();
 
     private volatile boolean closed;
@@ -120,6 +123,28 @@ final class OidcTenantRuntimeRegistry {
         }
     }
 
+    Optional<OidcBackChannelLogoutStore> logoutStore(String tenantId) {
+        requireOpen();
+        return tenantConfig(tenantId)
+                .filter(OidcTenantConfig::enabled)
+                .flatMap(OidcTenantConfig::logout)
+                .filter(OidcLogoutConfig::enabled)
+                .flatMap(OidcLogoutConfig::backChannel)
+                .map(config -> logoutStores.computeIfAbsent(tenantId,
+                                                             _ -> config.store().orElseGet(OidcInMemoryLogoutStore::new)));
+    }
+
+    Optional<OidcRemoteWorkLimiter> logoutWorkLimiter(String tenantId) {
+        requireOpen();
+        return tenantConfig(tenantId)
+                .filter(OidcTenantConfig::enabled)
+                .flatMap(OidcTenantConfig::logout)
+                .filter(OidcLogoutConfig::enabled)
+                .flatMap(OidcLogoutConfig::backChannel)
+                .map(config -> logoutWorkLimiters.computeIfAbsent(tenantId,
+                                                                   _ -> new OidcRemoteWorkLimiter(config.remoteWork())));
+    }
+
     int cachedTenantCount() {
         return contexts.size();
     }
@@ -197,6 +222,8 @@ final class OidcTenantRuntimeRegistry {
         List<TenantContextSlot> result = List.copyOf(contexts.values());
         contexts.clear();
         cookieStateHandlers.clear();
+        logoutStores.clear();
+        logoutWorkLimiters.clear();
         return result;
     }
 

@@ -22,6 +22,7 @@ import java.util.Optional;
 import io.helidon.builder.api.Option;
 import io.helidon.builder.api.Prototype;
 import io.helidon.json.JsonObject;
+import io.helidon.security.providers.oidc.next.spi.OidcBackChannelLogoutStore;
 
 /**
  * Persisted local OIDC authentication state.
@@ -109,4 +110,12 @@ interface OidcLocalAuthenticationStateBlueprint {
      * @return access-token expiration time
      */
     Optional<Instant> accessTokenExpiresAt();
+
+    /**
+     * Stable OP session identity and volatile or shared revocation-store marker when Back-Channel Logout is enabled.
+     *
+     * @return protected back-channel session binding
+     */
+    @Option.Confidential
+    Optional<OidcBackChannelLogoutStore.Session> backChannelSession();
 }

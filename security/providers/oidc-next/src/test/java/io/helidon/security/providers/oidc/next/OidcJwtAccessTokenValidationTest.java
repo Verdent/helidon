@@ -633,7 +633,7 @@ class OidcJwtAccessTokenValidationTest {
 
         AuthenticationResponse response = authenticate(wellKnownProvider(_ -> { }), token);
 
-        assertInvalidToken(response, "Bearer Token signature keys are unavailable");
+        assertJwkSetUnavailable(response);
         assertThat(remoteJwkSetRequests.get(), is(1));
     }
 
@@ -646,12 +646,12 @@ class OidcJwtAccessTokenValidationTest {
 
         AuthenticationResponse response = authenticate(wellKnownProvider(_ -> { }), token);
 
-        assertInvalidToken(response, "Bearer Token signature keys are unavailable");
+        assertJwkSetUnavailable(response);
         assertThat(remoteJwkSetRequests.get(), is(1));
     }
 
     @Test
-    void localVerificationKeysReloadOnUnknownKeyId() throws Exception {
+    void localVerificationKeysReloadImmediatelyOnUnknownKeyId() throws Exception {
         MutableClock clock = MutableClock.create(TEST_INSTANT);
         Path file = tempDir.resolve("local-jwks.json");
         String localKeys = Resource.create("oidc-next-verify-jwk.json").string();
@@ -662,7 +662,6 @@ class OidcJwtAccessTokenValidationTest {
 
         assertThat(manager.jwkKeys().forKeyId("verify-oct").isPresent(), is(true));
         Files.writeString(file, localKeys.replace("\"verify-oct\"", "\"rotated-oct\""));
-        clock.advance(config.unknownKeyIdRefreshInterval());
 
         JwkKeys refreshed = manager.jwkKeys(Optional.of("rotated-oct"));
         assertThat(refreshed.forKeyId("rotated-oct").isPresent(), is(true));
@@ -675,7 +674,7 @@ class OidcJwtAccessTokenValidationTest {
         Path file = tempDir.resolve("local-jwks.json");
         Files.writeString(file, Resource.create("oidc-next-verify-jwk.json").string());
         OidcJwkSetConfig config = OidcJwkSetConfig.builder().refreshInterval(Duration.ofSeconds(1))
-                .staleOnError(true).buildPrototype();
+                .maxStaleOnError(Duration.ofMinutes(1)).buildPrototype();
         OidcJwkSetManager manager = OidcJwkSetManager.createLocal("local",
                 ResourceConfig.builder().path(file).buildPrototype(), clock, config);
         assertThat(manager.jwkKeys().forKeyId("verify-oct").isPresent(), is(true));
@@ -712,7 +711,8 @@ class OidcJwtAccessTokenValidationTest {
                 Path file = tempDir.resolve("public-jwks.json");
                 Files.writeString(file, publicVerifyJwkSet);
                 OidcJwkSetConfig.Builder config = OidcJwkSetConfig.builder()
-                        .staleOnError(staleAllowed).unknownKeyIdRefreshInterval(Duration.ZERO);
+                        .maxStaleOnError(staleAllowed ? Duration.ofMinutes(5) : Duration.ZERO)
+                        .unknownKeyIdRefreshInterval(Duration.ZERO);
                 if (periodic) {
                     config.refreshInterval(Duration.ofSeconds(1));
                 }
@@ -726,7 +726,7 @@ class OidcJwtAccessTokenValidationTest {
                     Files.writeString(file, Resource.create("oidc-next-verify-jwk.json").string());
                     clock.advance(Duration.ofSeconds(2));
                     Supplier<JwkKeys> reload = periodic ? manager::jwkKeys : () -> manager.jwkKeys(Optional.of("verify-oct"));
-                    if (staleAllowed) {
+                    if (staleAllowed && periodic) {
                         JwkKeys keys = reload.get();
                         assertThat(keys.forKeyId("verify-rsa").isPresent(), is(true));
                         assertThat(keys.forKeyId("verify-oct").isEmpty(), is(true));
@@ -743,7 +743,7 @@ class OidcJwtAccessTokenValidationTest {
     }
 
     @Test
-    void unknownKeyIdRefreshesJwkSetAfterInterval() throws Exception {
+    void firstUnknownKeyIdRefreshesJwkSetWithoutWaitingForAgeInterval() throws Exception {
         MutableClock clock = MutableClock.create(TEST_INSTANT);
         Path jwkSet = tempDir.resolve("jwks.json");
         Files.writeString(jwkSet, emptyJwkSet());
@@ -751,7 +751,6 @@ class OidcJwtAccessTokenValidationTest {
 
         assertThat(manager.jwkKeys(Optional.of("verify-rsa")).forKeyId("verify-rsa").isPresent(), is(false));
         Files.writeString(jwkSet, verifyJwkSet);
-        clock.advance(OidcJwkSetConfig.create().unknownKeyIdRefreshInterval());
 
         assertThat(manager.jwkKeys(Optional.of("verify-rsa")).forKeyId("verify-rsa").isPresent(), is(true));
     }
@@ -766,7 +765,8 @@ class OidcJwtAccessTokenValidationTest {
                 .buildPrototype();
         OidcJwkSetManager manager = jwkSetManager(jwkSet.toUri(), clock, config);
 
-        assertThat(manager.jwkKeys(Optional.of("verify-rsa")).forKeyId("verify-rsa").isPresent(), is(false));
+        manager.jwkKeys();
+        assertThat(manager.jwkKeys(Optional.of("bogus")).forKeyId("bogus").isPresent(), is(false));
         Files.writeString(jwkSet, verifyJwkSet);
         clock.advance(Duration.ofSeconds(29));
         assertThat(manager.jwkKeys(Optional.of("verify-rsa")).forKeyId("verify-rsa").isPresent(), is(false));
@@ -799,7 +799,6 @@ class OidcJwtAccessTokenValidationTest {
         OidcJwkSetManager manager = jwkSetManager(jwkSet.toUri(), clock);
 
         manager.jwkKeys();
-        clock.advance(OidcJwkSetConfig.create().unknownKeyIdRefreshInterval());
         assertThat(manager.jwkKeys(Optional.of("verify-rsa")).forKeyId("verify-rsa").isPresent(), is(false));
         Files.writeString(jwkSet, verifyJwkSet);
 
@@ -816,7 +815,6 @@ class OidcJwtAccessTokenValidationTest {
         OidcJwkSetManager manager = jwkSetManager(jwkSet.toUri(), clock);
 
         manager.jwkKeys();
-        clock.advance(OidcJwkSetConfig.create().unknownKeyIdRefreshInterval());
         assertThat(manager.jwkKeys(Optional.of("bogus")).forKeyId("bogus").isPresent(), is(false));
         Files.writeString(jwkSet, verifyJwkSet);
 
@@ -833,12 +831,11 @@ class OidcJwtAccessTokenValidationTest {
         OidcJwkSetManager manager = jwkSetManager(jwkSet.toUri(), clock);
 
         manager.jwkKeys();
-        clock.advance(OidcJwkSetConfig.create().unknownKeyIdRefreshInterval());
         Files.delete(jwkSet);
-        assertThat(manager.jwkKeys(Optional.of("bogus")).forKeyId("bogus").isPresent(), is(false));
+        assertThrows(OidcJwkSetManager.UnavailableException.class, () -> manager.jwkKeys(Optional.of("bogus")));
         Files.writeString(jwkSet, verifyJwkSet);
 
-        assertThat(manager.jwkKeys(Optional.of("verify-rsa")).forKeyId("verify-rsa").isPresent(), is(false));
+        assertThrows(OidcJwkSetManager.UnavailableException.class, () -> manager.jwkKeys(Optional.of("verify-rsa")));
         clock.advance(OidcJwkSetConfig.create().unknownKeyIdRefreshInterval());
         assertThat(manager.jwkKeys(Optional.of("verify-rsa")).forKeyId("verify-rsa").isPresent(), is(true));
     }
@@ -868,6 +865,7 @@ class OidcJwtAccessTokenValidationTest {
         Files.writeString(jwkSet, verifyJwkSet);
         OidcJwkSetConfig config = OidcJwkSetConfig.builder()
                 .refreshInterval(Duration.ofSeconds(30))
+                .maxStaleOnError(Duration.ofMinutes(1))
                 .buildPrototype();
         OidcJwkSetManager manager = jwkSetManager(jwkSet.toUri(), clock, config);
 
@@ -876,6 +874,8 @@ class OidcJwtAccessTokenValidationTest {
         clock.advance(Duration.ofSeconds(30));
 
         assertThat(manager.jwkKeys().forKeyId("verify-rsa").isPresent(), is(true));
+        clock.advance(Duration.ofMinutes(1));
+        assertThrows(OidcJwkSetManager.UnavailableException.class, manager::jwkKeys);
     }
 
     @Test
@@ -885,7 +885,6 @@ class OidcJwtAccessTokenValidationTest {
         Files.writeString(jwkSet, verifyJwkSet);
         OidcJwkSetConfig config = OidcJwkSetConfig.builder()
                 .refreshInterval(Duration.ofSeconds(30))
-                .staleOnError(false)
                 .buildPrototype();
         OidcJwkSetManager manager = jwkSetManager(jwkSet.toUri(), clock, config);
 
@@ -1013,7 +1012,6 @@ class OidcJwtAccessTokenValidationTest {
         OidcJwkSetConfig config = OidcJwkSetConfig.builder()
                 .refreshInterval(Duration.ofSeconds(1))
                 .failureRetryInterval(Duration.ofSeconds(10))
-                .staleOnError(false)
                 .buildPrototype();
         remoteJwkSetResponses.set(new ConcurrentLinkedQueue<>(List.of(verifyJwkSet, "not-json")));
         OidcJwkSetManager manager = jwkSetManager(remoteJwksUri, clock, config);
@@ -1053,7 +1051,7 @@ class OidcJwtAccessTokenValidationTest {
         OidcJwkSetConfig config = OidcJwkSetConfig.builder()
                 .refreshInterval(Duration.ofSeconds(1))
                 .failureRetryInterval(Duration.ofSeconds(10))
-                .staleOnError(true)
+                .maxStaleOnError(Duration.ofSeconds(30))
                 .buildPrototype();
         remoteJwkSetResponses.set(new ConcurrentLinkedQueue<>(List.of(verifyJwkSet, "not-json")));
         OidcJwkSetManager manager = jwkSetManager(remoteJwksUri, clock, config);
@@ -1619,12 +1617,12 @@ class OidcJwtAccessTokenValidationTest {
     }
 
     @Test
-    void unavailableJwkSetIsRejectedAsInvalidToken() {
+    void unavailableJwkSetDoesNotMarkTheTokenAsInvalid() {
         String token = signedToken(_ -> { });
 
         AuthenticationResponse response = authenticate(provider(true, true, MISSING_JWKS_URI), token);
 
-        assertInvalidToken(response, "Bearer Token signature keys are unavailable");
+        assertJwkSetUnavailable(response);
     }
 
     private static AuthenticationResponse authenticate(OidcProvider provider, String token) {
@@ -1817,6 +1815,12 @@ class OidcJwtAccessTokenValidationTest {
         assertThat(response.responseHeaders().get("WWW-Authenticate").getFirst(),
                    is("Bearer realm=\"helidon\", error=\"invalid_token\", "
                               + "error_description=\"Bearer Token is invalid\""));
+    }
+
+    private static void assertJwkSetUnavailable(AuthenticationResponse response) {
+        assertThat(response.status(), is(SecurityResponse.SecurityStatus.FAILURE));
+        assertThat(response.statusCode().orElse(-1), is(503));
+        assertThat(response.responseHeaders().containsKey(HeaderNames.WWW_AUTHENTICATE.defaultCase()), is(false));
     }
 
     private OidcProvider wellKnownProvider(Consumer<OidcTenantConfig.Builder> tenantCustomizer) {

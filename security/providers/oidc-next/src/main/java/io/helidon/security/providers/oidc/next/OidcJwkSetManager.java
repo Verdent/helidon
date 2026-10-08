@@ -22,17 +22,19 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.Optional;
 import java.util.function.Function;
-import java.util.function.Supplier;
 
 import io.helidon.common.configurable.ResourceConfig;
 import io.helidon.security.jwt.jwk.JwkKeys;
 import io.helidon.webclient.api.WebClient;
 
 final class OidcJwkSetManager {
+    private static final Duration DEFAULT_REMOTE_REFRESH_INTERVAL = Duration.ofMinutes(5);
+
     private final String tenantId;
     private final Optional<URI> jwkSetUri;
+    private final boolean remoteHttp;
     private final OidcJwkSetConfig config;
-    private final Supplier<JwkKeys> keyLoader;
+    private final Function<Boolean, OidcJwkSetLoader.LoadedJwkSet> keyLoader;
     private final Clock clock;
     private final OidcRemoteWorkLimiter refreshAdmission;
     private volatile JwkSetState state = JwkSetState.empty();
@@ -41,10 +43,13 @@ final class OidcJwkSetManager {
     private OidcJwkSetManager(String tenantId,
                               Optional<URI> jwkSetUri,
                               OidcJwkSetConfig config,
-                              Supplier<JwkKeys> keyLoader,
+                              Function<Boolean, OidcJwkSetLoader.LoadedJwkSet> keyLoader,
                               Clock clock) {
         this.tenantId = tenantId;
         this.jwkSetUri = jwkSetUri;
+        this.remoteHttp = jwkSetUri.map(URI::getScheme)
+                .map(scheme -> "http".equalsIgnoreCase(scheme) || "https".equalsIgnoreCase(scheme))
+                .orElse(false);
         this.config = config;
         this.keyLoader = keyLoader;
         this.clock = clock;
@@ -83,12 +88,12 @@ final class OidcJwkSetManager {
                                     Clock clock,
                                     OidcJwkSetConfig config,
                                     Function<URI, Optional<String>> unauthorizedJwkSetAccessToken) {
-        OidcJwkSetLoader loader = new OidcJwkSetLoader(webClient, unauthorizedJwkSetAccessToken);
+        OidcJwkSetLoader loader = new OidcJwkSetLoader(webClient, unauthorizedJwkSetAccessToken, clock);
         Optional<URI> uri = metadata.jwkSetUri();
         return new OidcJwkSetManager(tenantId, uri, config,
-                                    () -> loader.load(uri.orElseThrow(() -> new IllegalStateException(
+                                    revalidate -> loader.load(uri.orElseThrow(() -> new IllegalStateException(
                                             "JWK Set URI is not configured for tenant: "
-                                                    + OidcDiagnostics.sanitizeLogValue(tenantId)))), clock);
+                                                    + OidcDiagnostics.sanitizeLogValue(tenantId))), revalidate), clock);
     }
 
     static OidcJwkSetManager createLocal(String tenantId,
@@ -96,7 +101,7 @@ final class OidcJwkSetManager {
                                          Clock clock,
                                          OidcJwkSetConfig config) {
         return new OidcJwkSetManager(tenantId, Optional.empty(), config,
-                                    () -> OidcJwkSetLoader.loadLocal(verificationJwk), clock);
+                                    _ -> OidcJwkSetLoader.loadLocal(verificationJwk), clock);
     }
 
     static OidcJwkSetManager createRemote(String tenantId,
@@ -105,9 +110,9 @@ final class OidcJwkSetManager {
                                           Clock clock,
                                           OidcJwkSetConfig config) {
         // Independent access-token keys must not inherit the OP adapter's credentials for its own JWK Set URI.
-        OidcJwkSetLoader loader = new OidcJwkSetLoader(webClient);
+        OidcJwkSetLoader loader = new OidcJwkSetLoader(webClient, _ -> Optional.empty(), clock);
         return new OidcJwkSetManager(tenantId, Optional.of(jwkSetUri), config,
-                                    () -> loader.load(jwkSetUri), clock);
+                                    revalidate -> loader.load(jwkSetUri, revalidate), clock);
     }
 
     Optional<URI> jwkSetUri() {
@@ -130,23 +135,33 @@ final class OidcJwkSetManager {
     }
 
     JwkKeys jwkKeys(Optional<String> keyId) {
+        JwkSetState before = state;
         JwkKeys current = jwkKeys();
         JwkKeys availableKeys = current;
         Optional<String> unknownKeyId = keyId.filter(kid -> availableKeys.forKeyId(kid).isEmpty());
         if (unknownKeyId.isEmpty()) {
             return current;
         }
-        return refreshUnknownKeyId(unknownKeyId.orElseThrow(), current, state);
+        JwkSetState observed = state;
+        if (before != observed) {
+            // The current request already loaded or refreshed the keys. Do not fetch twice for one unfamiliar kid.
+            if (observed.refreshFailure() != null) {
+                throw observed.refreshFailure();
+            }
+            // Another caller may have published the missing key since our lookup began.
+            return observed.keys() != null ? observed.keys() : current;
+        }
+        return refreshUnknownKeyId(unknownKeyId.orElseThrow(), current, observed);
     }
 
-    private JwkKeys loadJwkKeys() {
+    private OidcJwkSetLoader.LoadedJwkSet loadJwkKeys(boolean revalidate) {
         try {
-            return keyLoader.get();
+            return keyLoader.apply(revalidate);
         } catch (RuntimeException e) {
-            throw new IllegalStateException("Failed to load JWK Set for tenant: "
-                                                    + OidcDiagnostics.sanitizeLogValue(tenantId)
-                                                    + jwkSetUri.map(uri -> ", uri=" + OidcDiagnostics.safeUri(uri)).orElse(""),
-                                            e);
+            throw new UnavailableException("Failed to load JWK Set for tenant: "
+                                                   + OidcDiagnostics.sanitizeLogValue(tenantId)
+                                                   + jwkSetUri.map(uri -> ", uri=" + OidcDiagnostics.safeUri(uri)).orElse(""),
+                                           e);
         }
     }
 
@@ -172,7 +187,7 @@ final class OidcJwkSetManager {
             if (!refreshRequired(current)) {
                 return currentAfterRefreshFailure(current);
             }
-            return refreshJwkKeys(current.keys());
+            return refreshJwkKeys(current);
         }
     }
 
@@ -183,29 +198,36 @@ final class OidcJwkSetManager {
         try (OidcRemoteWorkLimiter.Permit _ = acquireRefresh()) {
             JwkSetState currentState = state;
             if (currentState != observed) {
+                if (currentState.refreshFailure() != null) {
+                    throw currentState.refreshFailure();
+                }
                 return publishedOutcome(currentState);
             }
             JwkKeys current = currentState.keys();
             if (current == null) {
-                current = loadInitialJwkKeys(currentState);
-                currentState = state;
+                // A no-store response was fetched for this invocation but must not be saved or fetched twice.
+                return staleKeys;
             }
             if (current.forKeyId(keyId).isPresent()) {
                 return current;
             }
             if (currentState.refreshFailure() != null && !failureRetryIntervalElapsed(currentState)) {
-                return currentAfterRefreshFailure(currentState);
+                throw currentState.refreshFailure();
             }
             if (!unknownKeyIdRefreshAllowed()) {
-                return current;
+                if (currentState.refreshFailure() != null) {
+                    throw currentState.refreshFailure();
+                }
+                return currentAfterRefreshFailure(currentState);
             }
             try {
-                JwkKeys loaded = loadJwkKeys();
+                OidcJwkSetLoader.LoadedJwkSet loaded = loadJwkKeys(true);
                 cacheJwkKeys(loaded);
-                return loaded;
+                return loaded.keys();
             } catch (RuntimeException e) {
                 recordRefreshFailure(e);
-                return staleOrThrow(current, e);
+                // Cached keys cannot verify this kid, even when stale use is permitted for known keys.
+                throw e;
             }
         }
     }
@@ -218,45 +240,45 @@ final class OidcJwkSetManager {
     private JwkKeys loadInitialJwkKeys(JwkSetState current) {
         // Called only by the admitted coordinator; never reacquire its non-reentrant permit.
         if (current.keys() != null) {
-            return refreshRequired(current) ? refreshJwkKeys(current.keys()) : currentAfterRefreshFailure(current);
+            return refreshRequired(current) ? refreshJwkKeys(current) : currentAfterRefreshFailure(current);
         }
         if (current.refreshFailure() != null && !failureRetryIntervalElapsed(current)) {
             throw current.refreshFailure();
         }
         try {
-            return refreshJwkKeys();
+            return refreshJwkKeys(false);
         } catch (RuntimeException e) {
             recordRefreshFailure(e);
             throw e;
         }
     }
 
-    private JwkKeys refreshJwkKeys() {
-        JwkKeys loaded = loadJwkKeys();
+    private JwkKeys refreshJwkKeys(boolean revalidate) {
+        OidcJwkSetLoader.LoadedJwkSet loaded = loadJwkKeys(revalidate);
         cacheJwkKeys(loaded);
-        return loaded;
+        return loaded.keys();
     }
 
-    private JwkKeys refreshJwkKeys(JwkKeys staleKeys) {
+    private JwkKeys refreshJwkKeys(JwkSetState current) {
         try {
-            return refreshJwkKeys();
+            return refreshJwkKeys(true);
         } catch (RuntimeException e) {
             recordRefreshFailure(e);
-            return staleOrThrow(staleKeys, e);
+            return staleOrThrow(current, e);
         }
     }
 
-    private JwkKeys staleOrThrow(JwkKeys staleKeys, RuntimeException refreshFailure) {
-        if (config.staleOnError()) {
-            return staleKeys;
+    private JwkKeys staleOrThrow(JwkSetState current, RuntimeException refreshFailure) {
+        if (current.staleUntil() != null && clock.instant().isBefore(current.staleUntil())) {
+            return current.keys();
         }
         throw refreshFailure;
     }
 
     private JwkKeys currentAfterRefreshFailure(JwkSetState current) {
-        return current.refreshFailure() == null
+        return current.refreshFailure() == null || !expired(current)
                 ? current.keys()
-                : staleOrThrow(current.keys(), current.refreshFailure());
+                : staleOrThrow(current, current.refreshFailure());
     }
 
     private JwkKeys publishedOutcome(JwkSetState published) {
@@ -267,26 +289,46 @@ final class OidcJwkSetManager {
         if (refreshFailure != null) {
             throw refreshFailure;
         }
-        throw new IllegalStateException("JWK Set load produced no outcome");
+        // A no-store response is not retained: each waiting caller must load its own copy.
+        return loadInitialJwkKeys(published);
     }
 
     private void recordRefreshFailure(RuntimeException refreshFailure) {
         JwkSetState current = state;
-        state = new JwkSetState(current.keys(), current.lastLoad(), clock.instant(), refreshFailure);
+        state = new JwkSetState(current.keys(), clock.instant(), current.expiresAt(), current.staleUntil(), refreshFailure);
     }
 
-    private void cacheJwkKeys(JwkKeys loaded) {
+    private void cacheJwkKeys(OidcJwkSetLoader.LoadedJwkSet loaded) {
         Instant now = clock.instant();
-        state = new JwkSetState(loaded, now, now, null);
+        Duration configuredLifetime = config.refreshInterval()
+                .orElse(remoteHttp ? DEFAULT_REMOTE_REFRESH_INTERVAL : null);
+        Instant expiresAt = null;
+        if (configuredLifetime != null) {
+            if (remoteHttp && loaded.responseAge().compareTo(configuredLifetime) > 0
+                    && loaded.responseAge().minus(configuredLifetime).compareTo(Duration.ofSeconds(1)) >= 0) {
+                throw new UnavailableException("JWK Set response exceeds the configured maximum age", null);
+            }
+            Duration localRemaining = loaded.responseAge().compareTo(configuredLifetime) >= 0
+                    ? Duration.ZERO : configuredLifetime.minus(loaded.responseAge());
+            Duration lifetime = loaded.freshness()
+                    .map(freshness -> freshness.compareTo(localRemaining) < 0 ? freshness : localRemaining)
+                    .orElse(localRemaining);
+            expiresAt = now.plus(lifetime);
+        }
+        Instant staleUntil = null;
+        if (expiresAt != null && loaded.staleAllowed() && !config.maxStaleOnError().isZero()) {
+            Duration permitted = loaded.staleIfError()
+                    .map(issuerLimit -> issuerLimit.compareTo(config.maxStaleOnError()) < 0
+                            ? issuerLimit : config.maxStaleOnError())
+                    .orElse(config.maxStaleOnError());
+            staleUntil = expiresAt.plus(permitted);
+        }
+        state = new JwkSetState(loaded.reusable() ? loaded.keys() : null, now, expiresAt, staleUntil, null);
     }
 
     private boolean unknownKeyIdRefreshAllowed() {
-        Instant lastLoad = state.lastLoad();
         Instant now = clock.instant();
         Duration refreshInterval = config.unknownKeyIdRefreshInterval();
-        if (lastLoad == null || now.isBefore(lastLoad.plus(refreshInterval))) {
-            return false;
-        }
         Instant lastAttempt = lastUnknownKeyIdRefreshAttempt;
         if (lastAttempt != null && now.isBefore(lastAttempt.plus(refreshInterval))) {
             return false;
@@ -295,20 +337,12 @@ final class OidcJwkSetManager {
         return true;
     }
 
-    private boolean refreshIntervalElapsed(JwkSetState current) {
-        Instant lastRefresh = current.lastAttempt();
-        if (lastRefresh == null) {
-            return false;
-        }
-        return config.refreshInterval()
-                .map(interval -> !clock.instant().isBefore(lastRefresh.plus(interval)))
-                .orElse(false);
+    private boolean expired(JwkSetState current) {
+        return current.expiresAt() != null && !clock.instant().isBefore(current.expiresAt());
     }
 
     private boolean refreshRequired(JwkSetState current) {
-        return current.refreshFailure() == null
-                ? refreshIntervalElapsed(current)
-                : failureRetryIntervalElapsed(current);
+        return expired(current) && (current.refreshFailure() == null || failureRetryIntervalElapsed(current));
     }
 
     private boolean failureRetryIntervalElapsed(JwkSetState current) {
@@ -323,14 +357,19 @@ final class OidcJwkSetManager {
                           ? "Interrupted while waiting for JWK Set loading"
                           : "JWK Set loading capacity or admission timeout exceeded");
         }
+
+        private UnavailableException(String message, Throwable cause) {
+            super(message, cause);
+        }
     }
 
     private record JwkSetState(JwkKeys keys,
-                               Instant lastLoad,
                                Instant lastAttempt,
+                               Instant expiresAt,
+                               Instant staleUntil,
                                RuntimeException refreshFailure) {
         private static JwkSetState empty() {
-            return new JwkSetState(null, null, null, null);
+            return new JwkSetState(null, null, null, null, null);
         }
     }
 }

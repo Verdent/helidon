@@ -263,7 +263,8 @@ class OidcJwkSetConcurrencyTest {
                     MutableClock clock = new MutableClock();
                     OidcJwkSetConfig.Builder config = OidcJwkSetConfig.builder()
                             .maxQueued(0).admissionTimeout(Duration.ofSeconds(30))
-                            .unknownKeyIdRefreshInterval(Duration.ZERO).staleOnError(stale);
+                            .unknownKeyIdRefreshInterval(Duration.ZERO)
+                            .maxStaleOnError(stale ? Duration.ofMinutes(1) : Duration.ZERO);
                     if ("expired".equals(mode)) {
                         config.refreshInterval(Duration.ofSeconds(1));
                     }
@@ -301,7 +302,8 @@ class OidcJwkSetConcurrencyTest {
             MutableClock clock = new MutableClock();
             OidcJwkSetConfig config = OidcJwkSetConfig.builder().maxQueued(2)
                     .admissionTimeout(Duration.ofSeconds(30)).refreshInterval(Duration.ofSeconds(1))
-                    .failureRetryInterval(Duration.ofSeconds(10)).staleOnError(stale).buildPrototype();
+                    .failureRetryInterval(Duration.ofSeconds(10))
+                    .maxStaleOnError(stale ? Duration.ofSeconds(30) : Duration.ZERO).buildPrototype();
             try (Peer peer = new Peer(config, clock, 2);
                  var executor = Executors.newVirtualThreadPerTaskExecutor()) {
                 String goodKeys = peer.body.get();

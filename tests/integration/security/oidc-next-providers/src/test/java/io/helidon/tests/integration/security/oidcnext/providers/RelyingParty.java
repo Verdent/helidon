@@ -19,10 +19,15 @@ package io.helidon.tests.integration.security.oidcnext.providers;
 import java.net.URI;
 import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 
 import io.helidon.common.configurable.ResourceConfig;
 import io.helidon.common.context.Contexts;
+import io.helidon.http.Method;
+import io.helidon.http.Status;
 import io.helidon.json.JsonObject;
 import io.helidon.security.Grant;
 import io.helidon.security.Role;
@@ -55,19 +60,27 @@ import io.helidon.webserver.security.SecurityFeature;
 final class RelyingParty implements AutoCloseable {
     private final OidcProvider provider;
     private final WebServer server;
+    private final CountDownLatch backChannelReceived = new CountDownLatch(1);
+    private final AtomicReference<Status> backChannelStatus = new AtomicReference<>();
 
     RelyingParty(IdpAdapter adapter, IdpAdapter.ClientMode mode, boolean browser,
                  Consumer<OidcTenantConfig.Builder> customizer) throws Exception {
-        this(adapter, mode, browser, customizer, Optional.empty());
+        this(adapter, mode, browser, customizer, Optional.empty(), false);
+    }
+
+    RelyingParty(IdpAdapter adapter, IdpAdapter.ClientMode mode, boolean browser,
+                 Consumer<OidcTenantConfig.Builder> customizer, boolean receiveExternalLogout) throws Exception {
+        this(adapter, mode, browser, customizer, Optional.empty(), receiveExternalLogout);
     }
 
     RelyingParty(IdpAdapter adapter, IdpAdapter.ClientMode mode, URI downstream,
                  OidcOutboundPolicyConfig policy) throws Exception {
-        this(adapter, mode, false, _ -> { }, Optional.of(new Outbound(downstream, policy)));
+        this(adapter, mode, false, _ -> { }, Optional.of(new Outbound(downstream, policy)), false);
     }
 
     private RelyingParty(IdpAdapter adapter, IdpAdapter.ClientMode mode, boolean browser,
-                         Consumer<OidcTenantConfig.Builder> customizer, Optional<Outbound> outbound) throws Exception {
+                         Consumer<OidcTenantConfig.Builder> customizer, Optional<Outbound> outbound,
+                         boolean receiveExternalLogout) throws Exception {
         OidcTenantConfig.Builder tenant = OidcTenantConfig.builder()
                 .issuer(adapter.issuer().toString()).clientId(mode.id())
                 .webClient(adapter.webClient())
@@ -130,6 +143,21 @@ final class RelyingParty implements AutoCloseable {
                 .addMethod("GET").customObject(OidcOutboundPolicyConfig.class, target.policy()).build()));
         provider = OidcProvider.create(config.buildPrototype());
         HttpRouting.Builder routing = HttpRouting.builder();
+        if (receiveExternalLogout) {
+            routing.addFilter((chain, request, response) -> {
+                if (request.prologue().method() == Method.POST
+                        && "/oidc/backchannel".equals(request.requestedUri().toUri().getPath())) {
+                    try {
+                        chain.proceed();
+                    } finally {
+                        backChannelStatus.set(response.status());
+                        backChannelReceived.countDown();
+                    }
+                } else {
+                    chain.proceed();
+                }
+            });
+        }
         OidcFeature.create(provider).setup(routing);
         OidcEndpointPolicyConfig cookiePolicy = OidcEndpointPolicyConfig.builder()
                 .acceptedCredentials(List.of(OidcEndpointCredential.AUTHENTICATION_COOKIE)).buildPrototype();
@@ -159,7 +187,8 @@ final class RelyingParty implements AutoCloseable {
                         outboundClient.closeResource();
                     }
                 }));
-        server = WebServer.builder().host("127.0.0.1").port(0).tls(IdpResources.serverTls())
+        server = WebServer.builder().host(receiveExternalLogout ? "0.0.0.0" : "127.0.0.1")
+                .port(0).tls(IdpResources.serverTls())
                 .addFeature(SecurityFeature.builder()
                         .security(Security.builder().addProvider(provider, "oidc-next")
                                 .addProvider(AbacProvider.builder().addValidator(RoleValidator.create())
@@ -177,6 +206,13 @@ final class RelyingParty implements AutoCloseable {
 
     URI baseUri() {
         return URI.create("https://localhost:" + server.port());
+    }
+
+    Status awaitBackChannelLogout() throws InterruptedException {
+        if (!backChannelReceived.await(10, TimeUnit.SECONDS)) {
+            throw new AssertionError("Keycloak did not deliver a back-channel logout notification");
+        }
+        return backChannelStatus.get();
     }
 
     @Override

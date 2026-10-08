@@ -29,6 +29,7 @@ import java.util.regex.Pattern;
 import io.helidon.common.parameters.Parameters;
 import io.helidon.common.uri.UriQuery;
 import io.helidon.http.HeaderNames;
+import io.helidon.http.Status;
 import io.helidon.json.JsonArray;
 import io.helidon.json.JsonObject;
 import io.helidon.security.providers.oidc.next.OidcJwtAccessTokenConfig;
@@ -55,6 +56,8 @@ final class KeycloakAdapter implements IdpAdapter {
             container = new GenericContainer<>(System.getProperty("helidon.tests.keycloak.image",
                                                                  "quay.io/keycloak/keycloak:26.8.0"))
                     .withExposedPorts(8443)
+                    // The OP must reach the test RP from its container and verify the RP's SAN-bearing TLS cert.
+                    .withExtraHost("auth.authelia.test", "host-gateway")
                     .withEnv("KC_BOOTSTRAP_ADMIN_USERNAME", "admin")
                     .withEnv("KC_BOOTSTRAP_ADMIN_PASSWORD", "admin")
                     .withCopyFileToContainer(MountableFile.forHostPath(realm), "/opt/keycloak/data/import/contract-realm.json")
@@ -62,7 +65,8 @@ final class KeycloakAdapter implements IdpAdapter {
                     .withCopyFileToContainer(MountableFile.forClasspathResource("tls-key.pem"), "/opt/keycloak/conf/test.key")
                     .withCommand("start-dev", "--import-realm", "--features=par",
                                  "--https-certificate-file=/opt/keycloak/conf/test.crt",
-                                 "--https-certificate-key-file=/opt/keycloak/conf/test.key")
+                                 "--https-certificate-key-file=/opt/keycloak/conf/test.key",
+                                 "--truststore-paths=/opt/keycloak/conf/test.crt")
                     .waitingFor(Wait.forHttp("/realms/contract/.well-known/openid-configuration").forPort(8443)
                             .usingTls().allowInsecure().withStartupTimeout(Duration.ofMinutes(4)));
             container.start();
@@ -103,16 +107,76 @@ final class KeycloakAdapter implements IdpAdapter {
         WebClient admin = WebClient.builder().from(client).build();
         try {
             String token = adminToken(admin);
-            String id;
-            try (HttpClientResponse response = admin.get().uri(issuer.resolve("/admin/realms/contract/clients"))
-                    .queryParam("clientId", mode.id()).header(HeaderNames.AUTHORIZATION, "Bearer " + token).request()) {
-                id = response.as(JsonArray.class).values().getFirst().asObject().stringValue("id").orElseThrow();
-            }
+            String id = clientInternalId(admin, token, mode);
             try (HttpClientResponse response = admin.put().uri(issuer.resolve("/admin/realms/contract/clients/" + id))
                     .header(HeaderNames.AUTHORIZATION, "Bearer " + token)
                     .submit(JsonObject.builder().setStrings("redirectUris", List.of(callback.toString(), COLLECTOR)).build())) {
                 if (response.status().code() != 204) {
                     throw new IllegalStateException("Keycloak callback registration failed: " + response.status());
+                }
+            }
+        } finally {
+            admin.closeResource();
+        }
+    }
+
+    AutoCloseable registerBackChannelLogout(ClientMode mode, URI logoutUri, boolean sessionRequired) {
+        WebClient admin = WebClient.builder().from(client).build();
+        try {
+            String token = adminToken(admin);
+            URI clientUri = issuer.resolve("/admin/realms/contract/clients/" + clientInternalId(admin, token, mode));
+            JsonObject attributes;
+            boolean frontchannelLogout;
+            try (HttpClientResponse response = admin.get().uri(clientUri)
+                    .header(HeaderNames.AUTHORIZATION, "Bearer " + token).request()) {
+                JsonObject registration = response.as(JsonObject.class);
+                attributes = registration.objectValue("attributes").orElseThrow();
+                frontchannelLogout = registration.booleanValue("frontchannelLogout", false);
+            }
+            JsonObject updated = JsonObject.builder().from(attributes)
+                    .set("backchannel.logout.url", logoutUri.toString())
+                    .set("backchannel.logout.session.required", Boolean.toString(sessionRequired)).build();
+            try (HttpClientResponse response = admin.put().uri(clientUri)
+                    .header(HeaderNames.AUTHORIZATION, "Bearer " + token)
+                    .submit(JsonObject.builder().set("frontchannelLogout", false).set("attributes", updated).build())) {
+                if (response.status().code() != Status.NO_CONTENT_204_CODE) {
+                    throw new IllegalStateException("Keycloak back-channel registration failed: " + response.status());
+                }
+            }
+            return () -> {
+                WebClient restore = WebClient.builder().from(client).build();
+                try (HttpClientResponse response = restore.put().uri(clientUri)
+                        .header(HeaderNames.AUTHORIZATION, "Bearer " + adminToken(restore))
+                        .submit(JsonObject.builder().set("frontchannelLogout", frontchannelLogout)
+                                        .set("attributes", attributes).build())) {
+                    if (response.status().code() != Status.NO_CONTENT_204_CODE) {
+                        throw new IllegalStateException("Keycloak logout registration restoration failed: "
+                                                                + response.status());
+                    }
+                } finally {
+                    restore.closeResource();
+                }
+            };
+        } finally {
+            admin.closeResource();
+        }
+    }
+
+    void logoutUser(String username) {
+        WebClient admin = WebClient.builder().from(client).build();
+        try {
+            String token = adminToken(admin);
+            String userId;
+            try (HttpClientResponse response = admin.get().uri(issuer.resolve("/admin/realms/contract/users"))
+                    .queryParam("username", username).queryParam("exact", "true")
+                    .header(HeaderNames.AUTHORIZATION, "Bearer " + token).request()) {
+                userId = response.as(JsonArray.class).values().getFirst().asObject().stringValue("id").orElseThrow();
+            }
+            try (HttpClientResponse response = admin.post()
+                    .uri(issuer.resolve("/admin/realms/contract/users/" + userId + "/logout"))
+                    .header(HeaderNames.AUTHORIZATION, "Bearer " + token).request()) {
+                if (response.status().code() != Status.NO_CONTENT_204_CODE) {
+                    throw new IllegalStateException("Keycloak administrator logout failed: " + response.status());
                 }
             }
         } finally {
@@ -298,6 +362,13 @@ final class KeycloakAdapter implements IdpAdapter {
                 throw new IllegalStateException("Keycloak admin authentication failed: " + response.status());
             }
             return response.as(JsonObject.class).stringValue("access_token").orElseThrow();
+        }
+    }
+
+    private String clientInternalId(WebClient admin, String token, ClientMode mode) {
+        try (HttpClientResponse response = admin.get().uri(issuer.resolve("/admin/realms/contract/clients"))
+                .queryParam("clientId", mode.id()).header(HeaderNames.AUTHORIZATION, "Bearer " + token).request()) {
+            return response.as(JsonArray.class).values().getFirst().asObject().stringValue("id").orElseThrow();
         }
     }
 }

@@ -102,6 +102,9 @@ final class OidcJoseKeyPolicy {
                         "JWS alg header is required for signature verification"));
         Optional<String> keyId = jwt.keyId();
         if (keyId.isEmpty()) {
+            // OIDC Core 10.1 requires the issuer to send kid when publishing multiple keys. A relying party can
+            // still verify an unambiguous kid-less JWS against the sole algorithm- and usage-eligible issuer key;
+            // never guess between multiple eligible keys or skip signature verification.
             List<Jwk> eligible = keys.keys()
                     .stream()
                     .filter(jwk -> isEligibleVerificationKey(jwk, algorithm))
@@ -131,19 +134,6 @@ final class OidcJoseKeyPolicy {
         validateVerificationKey(jwk, algorithm);
         Jwk effectiveJwk = jwk.algorithm().equals(algorithm) ? jwk : withAlgorithm(jwk, algorithm);
         return signedJwt.verifySignature(JwkKeys.builder().addKey(effectiveJwk).build());
-    }
-
-    static Errors verifyOidcSignature(SignedJwt signedJwt, Jwt jwt, JwkKeys keys) {
-        /*
-         * OpenID Connect Core 1.0, 10.1 Signing, requires kid when the referenced JWK Set contains multiple keys.
-         */
-        if (jwt.keyId().isEmpty() && keys.keys().size() != 1) {
-            Errors.Collector collector = Errors.collector();
-            collector.fatal(keys,
-                            "OpenID Connect JWS without kid requires a JWK Set containing exactly one key");
-            return collector.collect();
-        }
-        return verifySignature(signedJwt, jwt, keys);
     }
 
     static void validateConfiguredRsaKey(Jwk jwk, String description) {

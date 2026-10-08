@@ -185,7 +185,8 @@ final class OidcJwkSetLoader {
 
     private LoadedJwkSet successfulResponse(HttpClientResponse response, Instant requestedAt) {
         // A JWK Set must be a complete representation; partial or other non-200 responses cannot replace trust keys.
-        if (!response.status().equals(Status.OK_200)) {
+        // RFC 9112 section 4: the HTTP reason phrase is optional and must not affect status-code semantics.
+        if (response.status().code() != Status.OK_200_CODE) {
             throw new IllegalStateException("JWK Set endpoint returned status: " + response.status());
         }
         JsonObject jsonObject = response.as(JsonObject.class);

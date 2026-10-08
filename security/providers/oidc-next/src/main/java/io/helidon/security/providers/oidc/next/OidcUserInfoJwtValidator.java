@@ -66,7 +66,7 @@ final class OidcUserInfoJwtValidator {
         }
 
         try {
-            Errors signatureErrors = OidcJoseKeyPolicy.verifyOidcSignature(
+            Errors signatureErrors = OidcJoseKeyPolicy.verifySignature(
                     signedJwt,
                     jwt,
                     tenantContext.jwkSetManager().jwkKeys(jwt.keyId()));

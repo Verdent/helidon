@@ -63,6 +63,16 @@ class OidcJwkSetHttpCacheTest {
     private Path tempDir;
 
     @Test
+    void successfulJwkSetStatusDoesNotRequireTheDefaultReasonPhrase() {
+        MutableClock clock = new MutableClock();
+        try (Peer peer = new Peer(clock, OidcJwkSetConfig.create())) {
+            peer.reply.set(new Reply(ORIGINAL, Map.of(), Status.create(Status.OK_200_CODE, "Success")));
+            assertThat(peer.manager.jwkKeys().forKeyId("verify-rsa").isPresent(), is(true));
+            assertThat(peer.requests.get(), is(1));
+        }
+    }
+
+    @Test
     void defaultRemoteAgeLimitRemovesDecommissionedKeys() {
         MutableClock clock = new MutableClock();
         try (Peer peer = new Peer(clock, OidcJwkSetConfig.create())) {
@@ -395,8 +405,9 @@ class OidcJwkSetHttpCacheTest {
                 requests.incrementAndGet();
                 lastRequestCacheControl.set(request.headers().first(HeaderNames.CACHE_CONTROL).orElse(""));
                 Reply current = reply.get();
-                if (current.status() != Status.OK_200) {
-                    response.status(current.status()).send();
+                response.status(current.status());
+                if (current.status().code() != Status.OK_200_CODE) {
+                    response.send();
                     return;
                 }
                 response.headers().contentType(HttpMediaTypes.JSON);

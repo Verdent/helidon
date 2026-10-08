@@ -17,6 +17,7 @@
 package io.helidon.security.providers.oidc.next;
 
 import java.net.URI;
+import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -105,6 +106,34 @@ final class OidcAuthenticationOrchestrator {
         return authenticationFailure(context, policy, List.of());
     }
 
+    AuthenticationResponse refresh(ProviderRequest providerRequest) {
+        Optional<OidcTenantRuntimeRegistry.TenantSelection> selection = tenantRuntimeRegistry.select(providerRequest);
+        if (selection.isEmpty()) {
+            return OidcResponseFactory.missingAuthenticationCredential(List.of());
+        }
+        OidcTenantRuntimeRegistry.TenantSelection tenant = selection.orElseThrow();
+        Optional<OidcEndpointPolicy> policy = tenant.config().enabled()
+                ? OidcRequestContext.resolveEndpointPolicy(providerRequest, tenant.config())
+                : Optional.empty();
+        if (policy.filter(OidcEndpointPolicy::authenticationCookieAccepted).isEmpty()) {
+            return OidcResponseFactory.missingAuthenticationCredential(List.of());
+        }
+        OidcRequestContext context = new OidcRequestContext(providerRequest,
+                                                              tenantRuntimeRegistry.tenantContext(tenant.tenantId()),
+                                                              policy);
+        if (context.tenantContext().filter(it -> !it.ready()).isPresent()) {
+            return OidcResponseFactory.tenantUnavailable();
+        }
+        // On-demand refresh is strictly for the authenticated browser session, even on endpoints that also accept
+        // API Bearer tokens. Never allow a bearer credential to select or substitute for the cookie's identity.
+        if (context.bearerTokenPresent() || context.bearerTokenInvalidRequest()) {
+            return OidcResponseFactory.missingAuthenticationCredential(List.of());
+        }
+        LocalAuthenticationOutcome outcome = authenticateLocalCookie(context, true);
+        return outcome.response()
+                .orElseGet(() -> OidcResponseFactory.missingAuthenticationCredential(outcome.removalCookie()));
+    }
+
     private static List<String> removalCookies(OidcCookieStateHandler handler) {
         return handler.removeLocalAuthenticationResultCookies().stream().map(Object::toString).toList();
     }
@@ -139,7 +168,7 @@ final class OidcAuthenticationOrchestrator {
 
     private AuthenticationResponse authenticateAuthenticationCookie(OidcRequestContext context,
                                                                    OidcEndpointPolicy policy) {
-        LocalAuthenticationOutcome outcome = authenticateLocalCookie(context);
+        LocalAuthenticationOutcome outcome = authenticateLocalCookie(context, false);
         if (outcome.response().isPresent()) {
             return outcome.response().orElseThrow();
         }
@@ -193,7 +222,7 @@ final class OidcAuthenticationOrchestrator {
         return OidcResponseFactory.missingAuthenticationCredential(localAuthenticationRemovalCookie);
     }
 
-    private LocalAuthenticationOutcome authenticateLocalCookie(OidcRequestContext context) {
+    private LocalAuthenticationOutcome authenticateLocalCookie(OidcRequestContext context, boolean requestedRefresh) {
         Optional<OidcTenantContext> tenantContext = context.tenantContext()
                 .filter(OidcTenantContext::ready);
         if (tenantContext.isEmpty()) {
@@ -210,6 +239,10 @@ final class OidcAuthenticationOrchestrator {
                     : LocalAuthenticationOutcome.empty();
         }
         OidcLocalAuthenticationResult currentAuthenticationResult = localAuthenticationResult.orElseThrow();
+        Instant now = context.environment().time().toInstant();
+        if (requestedRefresh && !now.isBefore(currentAuthenticationResult.expiresAt())) {
+            return LocalAuthenticationOutcome.empty(removalCookies(cookieStateHandler));
+        }
         if (!browserSessionGenerationMatches(context, cookieStateHandler, currentAuthenticationResult)) {
             if (LOGGER.isLoggable(System.Logger.Level.DEBUG)) {
                 LOGGER.log(System.Logger.Level.DEBUG,
@@ -219,15 +252,29 @@ final class OidcAuthenticationOrchestrator {
             }
             return LocalAuthenticationOutcome.empty(removalCookies(cookieStateHandler));
         }
+        if (requestedRefresh && currentAuthenticationResult.refreshToken().isEmpty()) {
+            if (currentAuthenticationResult.accessTokenExpiresAt()
+                    .filter(expiry -> !now.isBefore(expiry)).isPresent()) {
+                return LocalAuthenticationOutcome.empty(removalCookies(cookieStateHandler));
+            }
+            return LocalAuthenticationOutcome.response(OidcResponseFactory.refreshTokenUnavailable());
+        }
         OidcRefreshTokenManager.RefreshResult refreshResult = refreshTokenManager.refreshIfNeeded(
                 currentAuthenticationResult,
                 readyTenant,
-                context.environment().time().toInstant(),
-                context.cookies());
+                now,
+                context.cookies(),
+                requestedRefresh);
         List<String> removalCookie = refreshResult.removeCookie() ? removalCookies(cookieStateHandler) : List.of();
         if (refreshResult.unavailable()) {
             return LocalAuthenticationOutcome.response(
-                    OidcResponseFactory.authorizationCodeFlowUnavailable(removalCookie));
+                    requestedRefresh ? OidcResponseFactory.refreshUnavailable(removalCookie)
+                            : OidcResponseFactory.authorizationCodeFlowUnavailable(removalCookie));
+        }
+        if (requestedRefresh && !refreshResult.refreshed() && refreshResult.authenticationResult().isPresent()) {
+            // Ordinary authentication may keep an unexpired source token through a transient OP failure. An explicit
+            // refresh request must not report success unless it actually obtained and validated replacement tokens.
+            return LocalAuthenticationOutcome.response(OidcResponseFactory.refreshUnavailable(List.of()));
         }
         Optional<OidcLocalAuthenticationResult> refreshedAuthenticationResult = refreshResult.authenticationResult();
         if (refreshedAuthenticationResult.isEmpty()) {

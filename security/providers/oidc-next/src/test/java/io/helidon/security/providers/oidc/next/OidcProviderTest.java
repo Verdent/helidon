@@ -153,6 +153,7 @@ class OidcProviderTest {
         OidcProvider provider = OidcProvider.create();
 
         assertThrows(NullPointerException.class, () -> provider.authenticate(null));
+        assertThrows(NullPointerException.class, () -> provider.refresh(null));
         assertThrows(NullPointerException.class, () -> provider.isOutboundSupported(null, null, null));
         assertThrows(NullPointerException.class, () -> provider.outboundSecurity(null, null, null));
 

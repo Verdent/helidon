@@ -16,6 +16,7 @@
 
 package io.helidon.security.providers.oidc.next;
 
+import java.util.Map;
 import java.util.Objects;
 import java.util.function.Consumer;
 
@@ -25,6 +26,7 @@ import io.helidon.security.AuthenticationResponse;
 import io.helidon.security.EndpointConfig;
 import io.helidon.security.OutboundSecurityResponse;
 import io.helidon.security.ProviderRequest;
+import io.helidon.security.SecurityContext;
 import io.helidon.security.SecurityEnvironment;
 import io.helidon.security.spi.AuthenticationProvider;
 import io.helidon.security.spi.OutboundSecurityProvider;
@@ -112,6 +114,31 @@ public final class OidcProvider
         tenantRuntimeRegistry.requireOpen();
         try {
             return authentication.authenticate(providerRequest);
+        } catch (OidcTenantRuntimeRegistry.UnavailableException _) {
+            return OidcResponseFactory.tenantUnavailable();
+        }
+    }
+
+    /**
+     * Refresh an existing browser session on demand (RFC 6749 section 6 and OIDC Core section 12). This operation
+     * requires a valid local authentication cookie and a refresh token; it does not start an authorization redirect or
+     * accept an API Bearer token as authentication.
+     * The returned authentication response contains the new identity and Set-Cookie headers on success. The caller
+     * must forward those headers to the browser before using the refreshed access token.
+     * A missing local session is rejected without redirecting to the OP; a session without a refresh token is
+     * rejected without changing its cookies.
+     * <p>
+     * No HTTP route is registered for this operation. If an application exposes one, it must protect the route against
+     * cross-site requests; otherwise another site could repeatedly rotate a user's refresh token.
+     *
+     * @param securityContext the current inbound request's security context
+     * @return the result of the requested refresh
+     */
+    public AuthenticationResponse refresh(SecurityContext securityContext) {
+        Objects.requireNonNull(securityContext, "securityContext");
+        tenantRuntimeRegistry.requireOpen();
+        try {
+            return authentication.refresh(ProviderRequest.create(securityContext, Map.of()));
         } catch (OidcTenantRuntimeRegistry.UnavailableException _) {
             return OidcResponseFactory.tenantUnavailable();
         }

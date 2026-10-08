@@ -78,6 +78,10 @@ abstract class OidcProviderContract {
 
     abstract IdpAdapter createAdapter();
 
+    final IdpAdapter adapter() {
+        return adapter;
+    }
+
     @BeforeAll
     void startProvider() throws Exception {
         assumeTrue(DockerClientFactory.instance().isDockerAvailable(), "Provider integration tests require Docker");
@@ -833,7 +837,7 @@ abstract class OidcProviderContract {
         }
     }
 
-    private URI authenticate(TestBrowser browser, RelyingParty rp) throws Exception {
+    final URI authenticate(TestBrowser browser, RelyingParty rp) throws Exception {
         URI authorization = authorization(browser, rp);
         URI callback = adapter.login(browser, authorization, rp.baseUri().resolve("/oidc/callback"));
         if (UriQuery.create(callback).contains("error")) {

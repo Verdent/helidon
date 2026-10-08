@@ -210,7 +210,7 @@ OidcProviderConfig config = OidcProviderConfig.builder()
                 .unknownKeyIdRefreshInterval(Duration.ofSeconds(30))
                 .refreshInterval(Duration.ofHours(1))
                 .failureRetryInterval(Duration.ofSeconds(10))
-                .staleOnError(true))
+                .maxStaleOnError(Duration.ofMinutes(5)))
         .protectedResource(protectedResource -> protectedResource
                 .tokenValidation(tokenValidation -> tokenValidation
                         .method(OidcTokenValidationMethod.JWT)
@@ -780,9 +780,10 @@ resource with only the claims this resource needs.
 
 ### JWK Set Reload Policy
 
-The `jwk-set` block configures how the provider reloads the JSON Web Key Set used for ID Token and JWT access-token
-signature validation. This is tenant configuration, so single-tenant applications place it directly under `oidc-next`;
-multi-tenant applications place it under each tenant that needs a custom policy.
+The `jwk-set` block configures how the provider reloads the JSON Web Key Set used for ID Token, signed UserInfo, and
+JWT access-token signature validation, as well as Request Object encryption. This is tenant configuration, so
+single-tenant applications place it directly under `oidc-next`; multi-tenant applications place it under each tenant
+that needs a custom policy.
 
 ```yaml
 security:
@@ -796,7 +797,7 @@ security:
           unknown-key-id-refresh-interval: "PT30S"
           refresh-interval: "PT1H"
           failure-retry-interval: "PT10S"
-          stale-on-error: true
+          max-stale-on-error: "PT5M"
           max-queued: 128
           admission-timeout: "PT1S"
         protected-resource:
@@ -811,25 +812,38 @@ location in `endpoints.jwks-uri` or the provider's `jwks_uri`; do not use a redi
 loading, unknown-key refresh, and periodic refresh, even if `webclient.follow-redirects` is enabled. Explicitly disabling
 `endpoints.tls-required` still permits direct HTTP for development, but does not enable JWKS redirects.
 
-A redirect is handled as a key-load failure. Initial loading fails; refresh follows the configured `stale-on-error` and
-retry policy without contacting the redirect target or replacing cached keys with that target's response.
+A redirect is handled as a key-load failure. Initial loading fails; refresh follows the configured `max-stale-on-error`
+and retry policy without contacting the redirect target or replacing cached keys with that target's response.
 
 `unknown-key-id-refresh-enabled` reloads the JWK Set when a token uses a `kid` that is not present in the cached keys.
 This supports Authorization Server key rotation. `unknown-key-id-refresh-interval` globally rate-limits those reload
-attempts across all unknown `kid` values, including failed reload attempts; the default is `PT5M`.
+attempts across all unknown `kid` values, including failed reload attempts; the default is `PT30S`. The first unfamiliar
+`kid` can trigger a reload immediately after the keys were loaded. A cold load or scheduled refresh already performed
+for the current request is not repeated just because its returned set lacks that `kid`. An unknown key is never accepted
+without a valid signature, even if a key refresh fails or is rate-limited.
 
-`refresh-interval` enables lazy periodic refresh. No background thread is started. The provider checks the cache age
-during token validation and refreshes only when a request needs keys after the interval has elapsed.
+Remote HTTP JWK Sets have a default maximum cache age of five minutes; `refresh-interval` can change that maximum.
+`Cache-Control: max-age`, `Expires`, `Date`, and `Age` from the JWK response can shorten its remaining lifetime, never
+lengthen the configured maximum. `no-cache` requires a fetch on each use; `no-store` also prevents storing the keys
+between uses. Refresh requests ask HTTP intermediaries to revalidate cached responses with the origin. Locally supplied
+keys and file URIs have no age-based refresh by default; setting `refresh-interval` explicitly enables it. Refresh is
+lazy when the next request needs keys; no background thread is started. A successful fetch replaces the entire old key
+set, including decommissioned keys. The provider remains responsible for publishing overlapping keys long enough for
+its tokens and caches during planned rotation.
 
 `failure-retry-interval` is the minimum delay before retrying a failed JWK Set load and defaults to `PT10S`. Concurrent
 callers observe the same failed refresh outcome during that interval instead of each starting another HTTP request. When
-cached keys exist, `stale-on-error` decides whether they remain usable while the failure is held.
+cached keys exist, `max-stale-on-error` determines how long they remain usable after their refresh deadline.
 
 Refreshes are coordinated as single-flight operations for concurrent requests. Valid cached-key hits bypass admission.
 When many virtual threads hit a cold cache, expired cache, or unknown `kid` at the same time, one admitted caller loads
-the JWK Set for that refresh opportunity and admitted followers reuse its published outcome. With `stale-on-error: true`,
-requests may continue to use cached keys when a reload fails. With `stale-on-error: false`, a failed scheduled reload causes
-requests to fail until `failure-retry-interval` permits another reload attempt.
+the JWK Set for that refresh opportunity and admitted followers reuse its published outcome. `no-store` responses are
+not retained; each caller must obtain its own keys. With the default `max-stale-on-error: PT0S`, an expired set cannot
+be used after a failed refresh. A positive duration explicitly permits a bounded grace period for deployments whose
+issuer allows stale use, but `no-cache` and `must-revalidate` still prohibit it, and an issuer's `stale-if-error` can
+shorten it. A failed refresh of an unfamiliar `kid` never permits validation with old keys. Key-source failures cause
+temporary unavailability, not an `invalid_token` challenge; a successfully fetched set that lacks the `kid` rejects
+the token as invalid.
 
 `max-queued` bounds waiting callers (default 128), in addition to the one admitted coordinator. `admission-timeout`
 limits how long a caller that reserved a queue slot may wait for coordination (default `PT1S`). Setting either to zero
@@ -839,7 +853,7 @@ apply independently to the provider JWK Set and a configured local `token-valida
 Waiting is interruptible; cancelling or timing out a follower does not cancel the shared load. The admission timeout is
 separate from the tenant WebClient's network timeouts and does not terminate an admitted load. Queue rejection, timeout,
 and interruption do not replace cached keys, reset refresh throttles, or get cached as key-load failures. In particular,
-`stale-on-error` does not turn local admission failure into acceptance of keys whose required refresh is still pending.
+`max-stale-on-error` does not turn local admission failure into acceptance of keys whose required refresh is still pending.
 
 JWKS admission failure yields HTTP 503 for Protected Resource JWT validation, without an `invalid_token` challenge.
 ID Token and signed UserInfo callback validation also return 503 and do not establish a session. Restart sign-in from
@@ -3194,10 +3208,10 @@ JWK Set options:
 | Key | Description |
 | --- | --- |
 | `unknown-key-id-refresh-enabled` | Whether an unknown JWT `kid` triggers a JWK Set reload attempt. Defaults to `true`. |
-| `unknown-key-id-refresh-interval` | Global minimum interval between reload attempts triggered by any unknown `kid`. Defaults to `PT5M`. |
-| `refresh-interval` | Optional lazy JWK Set refresh interval. If configured, cached keys older than this interval are refreshed during token validation. No background thread is started. |
+| `unknown-key-id-refresh-interval` | Global minimum interval between reload attempts triggered by any unknown `kid`; the first unfamiliar `kid` can trigger an immediate refresh. Defaults to `PT30S`. |
+| `refresh-interval` | Maximum lazy refresh age; defaults to `PT5M` for remote HTTP keys, but is disabled by default for local keys and file URIs. Provider HTTP cache directives may shorten it. No background thread is started. |
 | `failure-retry-interval` | Minimum interval before retrying a failed JWK Set load. Defaults to `PT10S`; concurrent callers observe the same failure during the interval. |
-| `stale-on-error` | Whether cached keys may still be used when a reload fails. Defaults to `true`; initial loading still fails when no cached keys exist. |
+| `max-stale-on-error` | Maximum additional time after expiration to use cached keys if refresh fails. Defaults to `PT0S` (fail closed). Prohibited by `no-cache` and `must-revalidate`, and capped by `stale-if-error` if provided. No stale keys are used on initial loading. |
 | `max-queued` | Maximum callers waiting for JWK Set coordination, independently per key-set manager. Defaults to `128`; zero fails fast while busy. Cache hits bypass admission. |
 | `admission-timeout` | Maximum wait for admitted JWK Set coordination callers. Defaults to `PT1S`; zero fails fast while busy. Waiting is interruptible and does not cancel the shared load or replace WebClient I/O timeouts. |
 

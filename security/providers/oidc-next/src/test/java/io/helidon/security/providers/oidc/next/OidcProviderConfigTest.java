@@ -199,10 +199,10 @@ class OidcProviderConfigTest {
         assertThat(clientAssertion.jwk().isEmpty(), is(true));
         assertThat(clientAssertion.lifetime(), is(Duration.ofMinutes(1)));
         assertThat(jwkSet.unknownKeyIdRefreshEnabled(), is(true));
-        assertThat(jwkSet.unknownKeyIdRefreshInterval(), is(Duration.ofMinutes(5)));
+        assertThat(jwkSet.unknownKeyIdRefreshInterval(), is(Duration.ofSeconds(30)));
         assertThat(jwkSet.refreshInterval().isEmpty(), is(true));
         assertThat(jwkSet.failureRetryInterval(), is(Duration.ofSeconds(10)));
-        assertThat(jwkSet.staleOnError(), is(true));
+        assertThat(jwkSet.maxStaleOnError(), is(Duration.ZERO));
         assertThat(jwkSet.maxQueued(), is(128));
         assertThat(jwkSet.admissionTimeout(), is(Duration.ofSeconds(1)));
         assertThat(remoteWork.maxConcurrent(), is(32));
@@ -348,7 +348,7 @@ class OidcProviderConfigTest {
                         Map.entry("tenants.default.jwk-set.unknown-key-id-refresh-interval", "PT30S"),
                         Map.entry("tenants.default.jwk-set.refresh-interval", "PT10M"),
                         Map.entry("tenants.default.jwk-set.failure-retry-interval", "PT20S"),
-                        Map.entry("tenants.default.jwk-set.stale-on-error", "false"),
+                        Map.entry("tenants.default.jwk-set.max-stale-on-error", "PT2M"),
                         Map.entry("tenants.default.token-exchange-remote-work.max-concurrent", "8"),
                         Map.entry("tenants.default.token-exchange-remote-work.max-queued", "16"),
                         Map.entry("tenants.default.token-exchange-remote-work.admission-timeout", "PT0.25S"),
@@ -466,7 +466,7 @@ class OidcProviderConfigTest {
         assertThat(tenant.jwkSet().unknownKeyIdRefreshInterval(), is(Duration.ofSeconds(30)));
         assertThat(tenant.jwkSet().refreshInterval().orElseThrow(), is(Duration.ofMinutes(10)));
         assertThat(tenant.jwkSet().failureRetryInterval(), is(Duration.ofSeconds(20)));
-        assertThat(tenant.jwkSet().staleOnError(), is(false));
+        assertThat(tenant.jwkSet().maxStaleOnError(), is(Duration.ofMinutes(2)));
         assertThat(tenant.tokenExchangeRemoteWork().maxConcurrent(), is(8));
         assertThat(tenant.tokenExchangeRemoteWork().maxQueued(), is(16));
         assertThat(tenant.tokenExchangeRemoteWork().admissionTimeout(), is(Duration.ofMillis(250)));
@@ -863,6 +863,15 @@ class OidcProviderConfigTest {
 
         assertThat(zero.getMessage(), containsString("jwk-set.failure-retry-interval"));
         assertThat(negative.getMessage(), containsString("jwk-set.failure-retry-interval"));
+    }
+
+    @Test
+    void jwkSetRejectsNegativeStaleOnErrorLimit() {
+        IllegalArgumentException negative = assertThrows(IllegalArgumentException.class,
+                                                         () -> OidcTenantConfig.builder()
+                                                                 .jwkSet(it -> it.maxStaleOnError(Duration.ofSeconds(-1)))
+                                                                 .buildPrototype());
+        assertThat(negative.getMessage(), containsString("jwk-set.max-stale-on-error"));
     }
 
     @Test

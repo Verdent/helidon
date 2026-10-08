@@ -134,6 +134,9 @@ final class OidcTenantConfigDecorator
         if (jwkSet.failureRetryInterval().isZero() || jwkSet.failureRetryInterval().isNegative()) {
             throw new IllegalArgumentException("jwk-set.failure-retry-interval must be positive");
         }
+        if (jwkSet.maxStaleOnError().isNegative()) {
+            throw new IllegalArgumentException("jwk-set.max-stale-on-error must not be negative");
+        }
     }
 
     private static void validateIdToken(OidcIdTokenConfig idToken) {

@@ -64,19 +64,21 @@ interface OidcJwkSetConfigBlueprint {
     boolean unknownKeyIdRefreshEnabled();
 
     /**
-     * Global minimum interval between JWK Set reload attempts triggered by any unknown key id.
+     * Global minimum interval between JWK Set reload attempts triggered by unfamiliar key ids.
+     * The first unfamiliar key id can trigger an immediate reload; an initial or scheduled load does not start this interval.
      *
      * @return unknown key id refresh interval
      */
     @Option.Configured
-    @Option.Default("PT5M")
+    @Option.Default("PT30S")
     Duration unknownKeyIdRefreshInterval();
 
     /**
-     * Lazy JWK Set refresh interval.
+     * Maximum age of a cached JWK Set before lazy refresh.
      * <p>
-     * If configured, cached keys older than this interval are refreshed during token validation. No background refresh
-     * thread is started.
+     * HTTP JWK Sets default to five minutes when this option is absent. An HTTP response can shorten that lifetime using
+     * cache headers; it cannot extend this maximum. Local resources are not refreshed by age unless this option is set.
+     * Refresh happens during key use; no background thread is started.
      *
      * @return lazy refresh interval
      */
@@ -87,7 +89,7 @@ interface OidcJwkSetConfigBlueprint {
      * Minimum interval before retrying a failed JWK Set load.
      * <p>
      * All callers within this interval observe the same failed refresh outcome. When cached keys exist,
-     * {@link #staleOnError()} determines whether those keys may be returned during the interval.
+     * {@link #maxStaleOnError()} determines whether they can still be used during the interval.
      *
      * @return failed-load retry interval
      */
@@ -96,13 +98,14 @@ interface OidcJwkSetConfigBlueprint {
     Duration failureRetryInterval();
 
     /**
-     * Whether cached keys may be used when a reload fails.
+     * Maximum time after a cached JWK Set becomes stale that it may still be used when a reload fails.
      * <p>
-     * Initial JWK Set loading still fails when no cached keys exist.
+     * Zero (the default) fails closed. HTTP cache directives that forbid stale reuse take precedence, and an issuer's
+     * {@code stale-if-error} directive can further restrict this window. Initial loading always fails without keys.
      *
-     * @return whether stale cached keys may be used on reload failure
+     * @return maximum additional stale-on-error time
      */
     @Option.Configured
-    @Option.DefaultBoolean(true)
-    boolean staleOnError();
+    @Option.Default("PT0S")
+    Duration maxStaleOnError();
 }

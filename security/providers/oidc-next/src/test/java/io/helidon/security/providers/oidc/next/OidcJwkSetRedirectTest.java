@@ -189,7 +189,8 @@ class OidcJwkSetRedirectTest {
                 tokenAcquisitions.incrementAndGet();
                 return Optional.of("key-reader");
             });
-            assertThat(loader.load(httpUri.resolve("protected-jwks")).forKeyId("verify-rsa").isPresent(), is(true));
+            assertThat(loader.load(httpUri.resolve("protected-jwks"), false)
+                               .keys().forKeyId("verify-rsa").isPresent(), is(true));
             assertThat(PROTECTED_REQUESTS.get(), is(2));
             assertThat(UNAUTHENTICATED_REQUESTS.get(), is(1));
             assertThat(tokenAcquisitions.get(), is(1));
@@ -210,7 +211,7 @@ class OidcJwkSetRedirectTest {
                 return Optional.of("key-reader");
             });
             IllegalStateException failure = assertThrows(IllegalStateException.class,
-                                                         () -> loader.load(httpUri.resolve("protected-jwks")));
+                                                         () -> loader.load(httpUri.resolve("protected-jwks"), false));
             assertThat(failure.getMessage(), containsString("status: 401"));
             assertThat(PROTECTED_REQUESTS.get(), is(2));
             assertThat(tokenAcquisitions.get(), is(1));
@@ -229,7 +230,7 @@ class OidcJwkSetRedirectTest {
                 tokenAcquisitions.incrementAndGet();
                 return Optional.of("key-reader");
             });
-            assertThrows(IllegalStateException.class, () -> loader.load(httpUri.resolve("jwks")));
+            assertThrows(IllegalStateException.class, () -> loader.load(httpUri.resolve("jwks"), false));
             assertThat(SOURCE_REQUESTS.get(), is(1));
             assertThat(TARGET_REQUESTS.get(), is(0));
             assertThat(tokenAcquisitions.get(), is(0));
@@ -257,7 +258,7 @@ class OidcJwkSetRedirectTest {
         URI uri = getClass().getClassLoader().getResource("oidc-next-verify-public-jwk.json").toURI();
         WebClient client = WebClient.create();
         try {
-            assertThat(new OidcJwkSetLoader(client).load(uri).forKeyId("verify-rsa").isPresent(), is(true));
+            assertThat(new OidcJwkSetLoader(client).load(uri, false).keys().forKeyId("verify-rsa").isPresent(), is(true));
             assertThat(SOURCE_REQUESTS.get(), is(0));
             assertThat(TARGET_REQUESTS.get(), is(0));
         } finally {
@@ -384,11 +385,12 @@ class OidcJwkSetRedirectTest {
             clock.advance(periodic ? Duration.ofMinutes(1) : Duration.ofSeconds(1));
             Supplier<JwkKeys> refresh = periodic ? manager::jwkKeys : () -> manager.jwkKeys(Optional.of("sign-rsa"));
 
-            if (stale) {
+            if (stale && periodic) {
                 JwkKeys retained = refresh.get();
                 assertThat(retained, sameInstance(original));
                 assertThat(retained.forKeyId("sign-rsa").isPresent(), is(false));
             } else {
+                // Stale keys are never enough to verify an unfamiliar kid after its fetch fails.
                 assertRedirectFailure(refresh, 302);
             }
             assertThat(SOURCE_REQUESTS.get(), is(2));
@@ -417,7 +419,7 @@ class OidcJwkSetRedirectTest {
                                         OidcJwkSetConfig.builder()
                                                 .refreshInterval(Duration.ofMinutes(1))
                                                 .unknownKeyIdRefreshInterval(Duration.ZERO)
-                                                .staleOnError(staleOnError)
+                                                .maxStaleOnError(staleOnError ? Duration.ofMinutes(5) : Duration.ZERO)
                                                 .buildPrototype());
     }
 

@@ -183,43 +183,92 @@ class OidcJwkSetHttpCacheTest {
     }
 
     @Test
-    void noCacheRevalidatesEachUseAndNeverServesStaleOnError() {
+    void noCacheKeepsParsedKeysUntilTheirBoundedLifetimeButNeverServesThemStale() {
         MutableClock clock = new MutableClock();
         OidcJwkSetConfig config = OidcJwkSetConfig.builder()
                 .maxStaleOnError(Duration.ofMinutes(5)).buildPrototype();
         try (Peer peer = new Peer(clock, config)) {
             peer.respond(ORIGINAL, Map.of(HeaderNames.CACHE_CONTROL, "no-cache, max-age=3600"));
-            assertThat(peer.manager.jwkKeys().forKeyId("verify-rsa").isPresent(), is(true));
+            JwkKeys original = peer.manager.jwkKeys();
             peer.respond(ROTATED, Map.of(HeaderNames.CACHE_CONTROL, "no-cache"));
+            assertThat(peer.manager.jwkKeys(), sameInstance(original));
+            assertThat(peer.requests.get(), is(1));
+
+            clock.advance(Duration.ofMinutes(5));
             assertThat(peer.manager.jwkKeys().forKeyId("sign-rsa").isPresent(), is(true));
             assertThat(peer.requests.get(), is(2));
 
             peer.fail(Status.INTERNAL_SERVER_ERROR_500);
+            clock.advance(Duration.ofMinutes(5));
             assertThrows(OidcJwkSetManager.UnavailableException.class, peer.manager::jwkKeys);
             assertThat(peer.requests.get(), is(3));
         }
     }
 
     @Test
-    void noStoreNeverReusesAResponseEvenWithStaleGrace() {
+    void explicitMaxAgeShortensApplicationKeyLifetimeWithNoCacheOrNoStore() {
+        for (String directive : List.of("no-cache", "no-store")) {
+            MutableClock clock = new MutableClock();
+            Map<HeaderName, String> headers = Map.of(HeaderNames.CACHE_CONTROL, directive + ", max-age=10");
+            try (Peer peer = new Peer(clock, OidcJwkSetConfig.create())) {
+                peer.respond(ORIGINAL, headers);
+                JwkKeys original = peer.manager.jwkKeys();
+                peer.respond(ROTATED, headers);
+
+                clock.advance(Duration.ofSeconds(9));
+                assertThat(peer.manager.jwkKeys(), sameInstance(original));
+                assertThat(peer.requests.get(), is(1));
+
+                clock.advance(Duration.ofSeconds(1));
+                JwkKeys updated = peer.manager.jwkKeys();
+                assertThat(updated.forKeyId("verify-rsa").isEmpty(), is(true));
+                assertThat(updated.forKeyId("sign-rsa").isPresent(), is(true));
+                assertThat(peer.requests.get(), is(2));
+            }
+        }
+    }
+
+    @Test
+    void zeroMaxAgeRequiresARefreshDespiteBoundedApplicationKeyReuse() {
+        for (String directive : List.of("no-cache", "no-store")) {
+            MutableClock clock = new MutableClock();
+            Map<HeaderName, String> headers = Map.of(HeaderNames.CACHE_CONTROL, directive + ", max-age=0");
+            try (Peer peer = new Peer(clock, OidcJwkSetConfig.create())) {
+                peer.respond(ORIGINAL, headers);
+                assertThat(peer.manager.jwkKeys().forKeyId("verify-rsa").isPresent(), is(true));
+                peer.respond(ROTATED, headers);
+                assertThat(peer.manager.jwkKeys().forKeyId("sign-rsa").isPresent(), is(true));
+                assertThat(peer.requests.get(), is(2));
+            }
+        }
+    }
+
+    @Test
+    void noStoreDoesNotPreventBoundedApplicationKeyReuseOrUnknownKidRefresh() {
         MutableClock clock = new MutableClock();
         OidcJwkSetConfig config = OidcJwkSetConfig.builder()
                 .maxStaleOnError(Duration.ofMinutes(5)).buildPrototype();
         try (Peer peer = new Peer(clock, config)) {
             peer.respond(ORIGINAL, Map.of(HeaderNames.CACHE_CONTROL, "no-store"));
-            assertThat(peer.manager.jwkKeys().forKeyId("verify-rsa").isPresent(), is(true));
+            JwkKeys original = peer.manager.jwkKeys();
             peer.respond(ROTATED, Map.of(HeaderNames.CACHE_CONTROL, "no-store"));
-            assertThat(peer.manager.jwkKeys().forKeyId("sign-rsa").isPresent(), is(true));
+            assertThat(peer.manager.jwkKeys(), sameInstance(original));
+            assertThat(peer.requests.get(), is(1));
+
+            JwkKeys rotated = peer.manager.jwkKeys(Optional.of("sign-rsa"));
+            assertThat(rotated.forKeyId("sign-rsa").isPresent(), is(true));
+            assertThat(rotated.forKeyId("verify-rsa").isEmpty(), is(true));
             assertThat(peer.requests.get(), is(2));
 
             peer.fail(Status.INTERNAL_SERVER_ERROR_500);
+            clock.advance(Duration.ofMinutes(5));
             assertThrows(OidcJwkSetManager.UnavailableException.class, peer.manager::jwkKeys);
             assertThat(peer.requests.get(), is(3));
         }
     }
 
     @Test
-    void noStoreConcurrentVirtualThreadsDoNotShareStoredKeys() throws Exception {
+    void noStoreConcurrentVirtualThreadsShareBoundedApplicationKeys() throws Exception {
         MutableClock clock = new MutableClock();
         OidcJwkSetConfig config = OidcJwkSetConfig.builder()
                 .admissionTimeout(Duration.ofSeconds(10)).buildPrototype();
@@ -236,10 +285,25 @@ class OidcJwkSetHttpCacheTest {
                     }))
                     .toList();
             start.countDown();
+            JwkKeys loaded = callers.getFirst().get(10, TimeUnit.SECONDS);
             for (Future<JwkKeys> caller : callers) {
-                assertThat(caller.get(10, TimeUnit.SECONDS).forKeyId("verify-rsa").isPresent(), is(true));
+                assertThat(caller.get(10, TimeUnit.SECONDS), sameInstance(loaded));
             }
-            assertThat(peer.requests.get(), is(16));
+            assertThat(loaded.forKeyId("verify-rsa").isPresent(), is(true));
+            assertThat(peer.requests.get(), is(1));
+        }
+    }
+
+    @Test
+    void zeroRefreshIntervalRequiresANewLoadForEveryUse() {
+        MutableClock clock = new MutableClock();
+        OidcJwkSetConfig config = OidcJwkSetConfig.builder().refreshInterval(Duration.ZERO).buildPrototype();
+        try (Peer peer = new Peer(clock, config)) {
+            peer.respond(ORIGINAL, Map.of(HeaderNames.CACHE_CONTROL, "no-store"));
+            assertThat(peer.manager.jwkKeys().forKeyId("verify-rsa").isPresent(), is(true));
+            peer.respond(ROTATED, Map.of(HeaderNames.CACHE_CONTROL, "no-store"));
+            assertThat(peer.manager.jwkKeys().forKeyId("sign-rsa").isPresent(), is(true));
+            assertThat(peer.requests.get(), is(2));
         }
     }
 

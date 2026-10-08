@@ -50,6 +50,7 @@ module io.helidon.security.providers.oidc.next {
     exports io.helidon.security.providers.oidc.next.spi;
 
     uses io.helidon.security.providers.oidc.next.spi.OidcTenantAdapterProvider;
+    uses io.helidon.security.providers.oidc.next.spi.OidcBackChannelLogoutStoreProvider;
 
     provides io.helidon.security.spi.SecurityProviderService
             with io.helidon.security.providers.oidc.next.OidcProviderService;

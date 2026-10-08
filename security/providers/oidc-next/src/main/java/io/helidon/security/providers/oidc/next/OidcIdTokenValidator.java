@@ -307,10 +307,10 @@ final class OidcIdTokenValidator {
         }
     }
 
-    private void validateAudience(Jwt jwt,
-                                  String clientId,
-                                  List<String> trustedAdditionalAudiences,
-                                  Errors.Collector collector) {
+    void validateAudience(Jwt jwt,
+                          String clientId,
+                          List<String> trustedAdditionalAudiences,
+                          Errors.Collector collector) {
         Optional<List<String>> audiences = jwt.audience();
         Optional<String> authorizedParty = authorizedParty(jwt, collector);
         if (audiences.filter(values -> values.size() > 1).isPresent() && authorizedParty.isEmpty()) {

@@ -21,10 +21,12 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 
 import io.helidon.http.SetCookie;
 import io.helidon.security.AuthenticationResponse;
 import io.helidon.security.ProviderRequest;
+import io.helidon.security.providers.oidc.next.spi.OidcBackChannelLogoutStore;
 
 final class OidcAuthenticationOrchestrator {
     private static final System.Logger LOGGER = System.getLogger(OidcAuthenticationOrchestrator.class.getName());
@@ -35,6 +37,7 @@ final class OidcAuthenticationOrchestrator {
     private final OidcRefreshTokenManager refreshTokenManager;
     private final Map<OidcTokenValidationMethod, OidcAccessTokenValidator> accessTokenValidators;
     private final List<URI> redirectionEndpointUris;
+    private final Set<String> backChannelLogoutPaths;
 
     private OidcAuthenticationOrchestrator(OidcProviderConfig config,
                                            OidcTenantRuntimeRegistry tenantRuntimeRegistry,
@@ -48,6 +51,7 @@ final class OidcAuthenticationOrchestrator {
         this.refreshTokenManager = refreshTokenManager;
         this.accessTokenValidators = accessTokenValidators;
         this.redirectionEndpointUris = OidcEndpointUris.redirectionEndpointUris(config);
+        this.backChannelLogoutPaths = OidcEndpointUris.backChannelLogoutPaths(config);
     }
 
     static OidcAuthenticationOrchestrator create(OidcProviderConfig config,
@@ -61,6 +65,12 @@ final class OidcAuthenticationOrchestrator {
     }
 
     AuthenticationResponse authenticate(ProviderRequest providerRequest) {
+        URI targetUri = providerRequest.env().targetUri();
+        if (targetUri != null && "POST".equals(providerRequest.env().method())
+                && backChannelLogoutPaths.contains(OidcUri.path(targetUri))) {
+            // The OP authenticates to this feature route with a signed Logout Token, never a browser cookie or Bearer.
+            return AuthenticationResponse.abstain();
+        }
         Optional<OidcTenantRuntimeRegistry.TenantSelection> selection = tenantRuntimeRegistry.select(providerRequest);
         if (selection.isEmpty()) {
             return AuthenticationResponse.abstain();
@@ -252,6 +262,16 @@ final class OidcAuthenticationOrchestrator {
             }
             return LocalAuthenticationOutcome.empty(removalCookies(cookieStateHandler));
         }
+        Optional<OidcBackChannelLogoutStore> logoutStore = tenantRuntimeRegistry.logoutStore(readyTenant.tenantId());
+        if (logoutStore.isPresent()) {
+            try {
+                if (OidcBackChannelSessionSupport.revoked(currentAuthenticationResult, logoutStore.orElseThrow())) {
+                    return LocalAuthenticationOutcome.empty(removalCookies(cookieStateHandler));
+                }
+            } catch (OidcBackChannelSessionSupport.StoreUnavailableException _) {
+                return LocalAuthenticationOutcome.response(OidcResponseFactory.authorizationCodeFlowUnavailable(List.of()));
+            }
+        }
         if (requestedRefresh && currentAuthenticationResult.refreshToken().isEmpty()) {
             if (currentAuthenticationResult.accessTokenExpiresAt()
                     .filter(expiry -> !now.isBefore(expiry)).isPresent()) {
@@ -264,7 +284,8 @@ final class OidcAuthenticationOrchestrator {
                 readyTenant,
                 now,
                 context.cookies(),
-                requestedRefresh);
+                requestedRefresh,
+                logoutStore);
         List<String> removalCookie = refreshResult.removeCookie() ? removalCookies(cookieStateHandler) : List.of();
         if (refreshResult.unavailable()) {
             return LocalAuthenticationOutcome.response(
@@ -281,6 +302,16 @@ final class OidcAuthenticationOrchestrator {
             return LocalAuthenticationOutcome.empty(removalCookie);
         }
         OidcLocalAuthenticationResult result = refreshedAuthenticationResult.orElseThrow();
+        if (logoutStore.isPresent()) {
+            try {
+                if (OidcBackChannelSessionSupport.revoked(result, logoutStore.orElseThrow())) {
+                    return LocalAuthenticationOutcome.empty(removalCookies(cookieStateHandler));
+                }
+            } catch (OidcBackChannelSessionSupport.StoreUnavailableException _) {
+                return LocalAuthenticationOutcome.response(OidcResponseFactory.authorizationCodeFlowUnavailable(
+                        refreshResult.refreshed() ? removalCookies(cookieStateHandler) : List.of()));
+            }
+        }
         if (OidcSubjectMapper.localPrincipalId(result.idToken().jwt()).isEmpty()) {
             if (LOGGER.isLoggable(System.Logger.Level.DEBUG)) {
                 LOGGER.log(System.Logger.Level.DEBUG,

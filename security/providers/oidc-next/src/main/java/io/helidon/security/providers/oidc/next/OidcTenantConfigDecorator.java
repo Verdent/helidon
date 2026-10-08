@@ -755,6 +755,18 @@ final class OidcTenantConfigDecorator
                            logout.endSession()
                                    .filter(OidcEndSessionConfig::enabled),
                            endpoints);
+        logout.backChannel().ifPresent(backChannel -> {
+            if (configuredAuthorizationCode.filter(OidcAuthorizationCodeConfig::enabled).isEmpty()) {
+                throw new IllegalArgumentException("logout.back-channel requires authorization-code to be enabled");
+            }
+            OidcEndpointUris.validateBackChannelLogoutUri(backChannel.uri(), endpoints.tlsRequired());
+            String backChannelPath = OidcUri.path(backChannel.uri());
+            if (backChannelPath.equals(OidcUri.path(logout.localEndpointUri()))
+                    || backChannelPath.equals(OidcUri.path(OidcEndpointUris.redirectionEndpointUri(
+                            configuredAuthorizationCode.orElseThrow())))) {
+                throw new IllegalArgumentException("logout.back-channel.uri path conflicts with another OIDC route");
+            }
+        });
     }
 
     private static void validateEndSession(OidcTenantConfig.BuilderBase<?, ?> tenant,

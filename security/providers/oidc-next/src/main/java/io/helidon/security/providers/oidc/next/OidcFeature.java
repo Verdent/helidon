@@ -24,6 +24,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.stream.Collectors;
@@ -34,6 +35,7 @@ import io.helidon.http.Method;
 import io.helidon.http.PathMatchers;
 import io.helidon.http.SetCookie;
 import io.helidon.http.Status;
+import io.helidon.security.providers.oidc.next.spi.OidcBackChannelLogoutStore;
 import io.helidon.webserver.WebServer;
 import io.helidon.webserver.http.HttpFeature;
 import io.helidon.webserver.http.HttpRouting;
@@ -56,16 +58,29 @@ public final class OidcFeature implements HttpFeature, ServerFeature {
     private final boolean ownsRuntime;
     private final OidcAuthorizationResponseProcessor authorizationResponseProcessor;
     private final OidcLogoutHandler logoutHandler;
+    private final OidcBackChannelLogoutHandler backChannelLogoutHandler;
     private final OidcIdTokenValidator idTokenValidator;
 
     private OidcFeature(OidcProviderConfig config, OidcTenantRuntimeRegistry tenantRuntimeRegistry, boolean ownsRuntime) {
         OidcProviderConfig providerConfig = Objects.requireNonNull(config);
         OidcTenantRuntimeRegistry runtimeRegistry = Objects.requireNonNull(tenantRuntimeRegistry);
+        if (ownsRuntime && providerConfig.tenants().values().stream()
+                .filter(OidcTenantConfig::enabled)
+                .flatMap(tenant -> tenant.logout().stream())
+                .filter(OidcLogoutConfig::enabled)
+                .flatMap(logout -> logout.backChannel().stream())
+                .anyMatch(backChannel -> backChannel.store().isEmpty())) {
+            // An independent feature with its own in-memory map would acknowledge OP logout notifications that the
+            // separately constructed authentication provider never sees. Use create(provider) or a shared store.
+            throw new IllegalArgumentException("Back-Channel Logout with an in-memory store requires "
+                                                       + "OidcFeature.create(provider)");
+        }
         this.config = providerConfig;
         this.tenantRuntimeRegistry = runtimeRegistry;
         this.ownsRuntime = ownsRuntime;
         this.authorizationResponseProcessor = new OidcAuthorizationResponseProcessor(providerConfig, runtimeRegistry);
         this.logoutHandler = new OidcLogoutHandler(providerConfig, runtimeRegistry);
+        this.backChannelLogoutHandler = new OidcBackChannelLogoutHandler(providerConfig, runtimeRegistry);
         this.idTokenValidator = new OidcIdTokenValidator();
     }
 
@@ -120,6 +135,9 @@ public final class OidcFeature implements HttpFeature, ServerFeature {
         logoutEndpointPaths().forEach(path -> routing.route(Method.POST,
                                                             PathMatchers.exact(path),
                                                             logoutHandler::process));
+        backChannelLogoutHandler.paths().forEach(path -> routing.route(Method.POST,
+                                                                     PathMatchers.exact(path),
+                                                                     backChannelLogoutHandler::process));
     }
 
     @Override
@@ -290,6 +308,26 @@ public final class OidcFeature implements HttpFeature, ServerFeature {
         OidcCookieStateHandler cookieHandler = tenantContext.cookieStateHandler();
         if (rejectExpiredAccessToken(localAuthenticationResult, cookieHandler, response)) {
             return;
+        }
+        Optional<OidcBackChannelLogoutStore> logoutStore = tenantRuntimeRegistry.logoutStore(tenantContext.tenantId());
+        if (logoutStore.isPresent()) {
+            try {
+                boolean sessionRequired = tenantContext.tenantConfig().logout().orElseThrow()
+                        .backChannel().orElseThrow().sessionRequired();
+                localAuthenticationResult = localAuthenticationResult.withBackChannelSession(
+                        OidcBackChannelSessionSupport.begin(localAuthenticationResult,
+                                                            logoutStore.orElseThrow(),
+                                                            sessionRequired));
+            } catch (OidcBackChannelSessionSupport.SessionRevokedException _) {
+                response.status(Status.UNAUTHORIZED_401).send("OIDC login session was logged out");
+                return;
+            } catch (IllegalArgumentException _) {
+                response.status(Status.BAD_GATEWAY_502).send("OP ID Token session identifier is invalid");
+                return;
+            } catch (OidcBackChannelSessionSupport.StoreUnavailableException _) {
+                response.status(Status.SERVICE_UNAVAILABLE_503).send("OIDC logout state is temporarily unavailable");
+                return;
+            }
         }
         try {
             OidcSubjectMapper.map(localAuthenticationResult, tenantContext);

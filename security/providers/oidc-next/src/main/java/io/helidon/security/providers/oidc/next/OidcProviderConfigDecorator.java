@@ -18,8 +18,10 @@ package io.helidon.security.providers.oidc.next;
 
 import java.time.Duration;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import io.helidon.builder.api.Prototype;
 import io.helidon.config.Config;
@@ -95,10 +97,21 @@ final class OidcProviderConfigDecorator
         OidcMixUpProtection.validateIssuerBindings(target.tenants(), target.issuerUniquenessValidationEnabled());
 
         Map<String, String> cookieNamespaces = new HashMap<>();
+        Set<String> otherOidcRoutes = new HashSet<>();
         for (OidcTenantConfig tenant : target.tenants().values()) {
             if (!tenant.enabled()) {
                 continue;
             }
+            tenant.authorizationCode()
+                    .filter(OidcAuthorizationCodeConfig::enabled)
+                    .map(OidcEndpointUris::redirectionEndpointUri)
+                    .map(OidcUri::path)
+                    .ifPresent(otherOidcRoutes::add);
+            tenant.logout()
+                    .filter(OidcLogoutConfig::enabled)
+                    .map(OidcLogoutConfig::localEndpointUri)
+                    .map(OidcUri::path)
+                    .ifPresent(otherOidcRoutes::add);
             OidcCookieConfig cookies = tenant.cookies();
             for (int index = 0; index < OidcCookieStateHandler.MAX_COOKIE_CHUNKS; index++) {
                 String sessionName = OidcCookieStateHandler.sessionCookieName(cookies, index);
@@ -120,6 +133,22 @@ final class OidcProviderConfigDecorator
                 throw new IllegalArgumentException("OIDC cookie namespace overlaps a generation cookie");
             }
         }
+
+        Map<String, String> backChannelPaths = new HashMap<>();
+        target.tenants().forEach((tenantId, tenant) -> {
+            if (!tenant.enabled()) {
+                return;
+            }
+            tenant.logout().filter(OidcLogoutConfig::enabled)
+                    .flatMap(OidcLogoutConfig::backChannel)
+                    .ifPresent(backChannel -> {
+                        String path = OidcUri.path(backChannel.uri());
+                        if (otherOidcRoutes.contains(path)
+                                || backChannelPaths.putIfAbsent(path, tenantId) != null) {
+                            throw new IllegalArgumentException("logout.back-channel.uri path must be unique: " + path);
+                        }
+                    });
+        });
 
         // Target policies are selected per request. Their grant requirements must not invalidate unrelated tenants;
         // the outbound orchestrator validates the selected tenant before it sends a token request.

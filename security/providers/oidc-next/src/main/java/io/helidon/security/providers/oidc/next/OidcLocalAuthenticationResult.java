@@ -23,6 +23,7 @@ import java.util.Objects;
 import java.util.Optional;
 
 import io.helidon.json.JsonObject;
+import io.helidon.security.providers.oidc.next.spi.OidcBackChannelLogoutStore;
 
 final class OidcLocalAuthenticationResult {
     private final OidcLocalAuthenticationState state;
@@ -63,6 +64,12 @@ final class OidcLocalAuthenticationResult {
 
     static OidcLocalAuthenticationResult fromStoredValues(OidcLocalAuthenticationState state) {
         return new OidcLocalAuthenticationResult(state);
+    }
+
+    OidcLocalAuthenticationResult withBackChannelSession(OidcBackChannelLogoutStore.Session session) {
+        return fromStoredValues(OidcLocalAuthenticationState.builder(state)
+                                        .backChannelSession(session)
+                                        .buildPrototype());
     }
 
     String tenantId() {
@@ -107,6 +114,10 @@ final class OidcLocalAuthenticationResult {
 
     Optional<Instant> accessTokenExpiresAt() {
         return state.accessTokenExpiresAt();
+    }
+
+    Optional<OidcBackChannelLogoutStore.Session> backChannelSession() {
+        return state.backChannelSession();
     }
 
     private static Optional<String> requestedScope(List<String> requestedScopes) {

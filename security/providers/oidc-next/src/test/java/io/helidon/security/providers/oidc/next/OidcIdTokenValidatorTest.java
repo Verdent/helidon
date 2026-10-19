@@ -154,7 +154,7 @@ class OidcIdTokenValidatorTest {
         OidcAuthenticationRequestState withNoNonce = new OidcAuthenticationRequestState(
                 "default", "state-value", null, "pkce-verifier", null, ISSUER.toString(),
                 ORIGINAL_URI, REDIRECTION_ENDPOINT_URI, List.of("openid"), VALIDATION_TIME.minusSeconds(1),
-                VALIDATION_TIME.plusSeconds(300));
+                VALIDATION_TIME.plusSeconds(300), Optional.empty());
         OidcValidationResult<OidcValidatedIdToken> result = validator.validate(
                 signedIdToken(it -> it.nonce(null)), tenantContext(), withNoNonce, VALIDATION_TIME);
 
@@ -635,7 +635,7 @@ class OidcIdTokenValidatorTest {
                                                      REDIRECTION_ENDPOINT_URI,
                                                      List.of("openid"),
                                                      VALIDATION_TIME.minusSeconds(1),
-                                                     VALIDATION_TIME.plusSeconds(300));
+                                                     VALIDATION_TIME.plusSeconds(300), Optional.empty());
     }
 
     private static String signedIdToken(Consumer<Jwt.Builder> customizer) {

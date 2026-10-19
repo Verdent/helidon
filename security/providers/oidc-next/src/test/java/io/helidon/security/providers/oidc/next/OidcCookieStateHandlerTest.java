@@ -147,7 +147,7 @@ class OidcCookieStateHandlerTest {
         OidcAuthenticationRequestState withNoNonce = new OidcAuthenticationRequestState(
                 TENANT_ID, "custom-state", null, "pkce-verifier", null, "https://issuer.example",
                 URI.create("https://rp.example/original"), URI.create("https://rp.example/oidc/callback"),
-                List.of("openid"), NOW.minusSeconds(1), NOW.plusSeconds(60));
+                List.of("openid"), NOW.minusSeconds(1), NOW.plusSeconds(60), Optional.empty());
         SetCookie cookie = OidcCookieStateHandler.create(TENANT_ID, tenant)
                 .createAuthenticationRequestCookies(withNoNonce, true, Map.of()).getFirst();
         assertThat(OidcCookieStateHandler.authenticationRequestTenantHint(cookie.value()), is(Optional.of(TENANT_ID)));
@@ -275,7 +275,7 @@ class OidcCookieStateHandlerTest {
                                                   URI.create("https://rp.example/oidc/callback"),
                                                   List.of("openid", "profile"),
                                                   NOW.minusSeconds(1),
-                                                  NOW.plusSeconds(60));
+                                                  NOW.plusSeconds(60), Optional.empty());
     }
 
     private static String tamper(String value) {

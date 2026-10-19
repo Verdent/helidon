@@ -44,36 +44,39 @@ class OidcInMemoryLogoutStoreTest {
     @Test
     void sessionLogoutTargetsSidWithinItsTenant() {
         OidcInMemoryLogoutStore store = store(100);
-        OidcBackChannelLogoutStore.Session target = session(store, "default", "alice", "session-a", NOW.minusSeconds(30));
-        OidcBackChannelLogoutStore.Session otherSid = session(store, "default", "alice", "session-b", NOW.minusSeconds(30));
-        OidcBackChannelLogoutStore.Session otherTenant = session(store, "other", "alice", "session-a", NOW.minusSeconds(30));
+        OidcBackChannelLogoutStore.Session target = session(store, "default", "alice", "session-a");
+        OidcBackChannelLogoutStore.Session otherSid = session(store, "default", "alice", "session-b");
+        OidcBackChannelLogoutStore.Session otherTenant = session(store, "other", "alice", "session-a");
 
         store.revoke(event("default", "alice", "session-a", "event-a"), NOW.plusSeconds(3600));
 
         assertThat(store.revoked(target), is(true));
         assertThat(store.revoked(otherSid), is(false));
         assertThat(store.revoked(otherTenant), is(false));
-        assertThat(store.revoked(session(store, "default", "alice", "session-a", NOW.plusSeconds(1))), is(true));
+        assertThat(store.revoked(session(store, "default", "alice", "session-a")), is(true));
     }
 
     @Test
     void subjectLogoutDoesNotRejectNewLoginOrAdvanceTwiceForDuplicateDelivery() {
         OidcInMemoryLogoutStore store = store(100);
-        OidcBackChannelLogoutStore.Session oldOne = session(store, "default", "alice", "session-a", NOW.minusSeconds(30));
-        OidcBackChannelLogoutStore.Session oldTwo = session(store, "default", "alice", "session-b", NOW.minusSeconds(30));
-        OidcBackChannelLogoutStore.Session bob = session(store, "default", "bob", null, NOW.minusSeconds(30));
+        OidcBackChannelLogoutStore.Session oldOne = session(store, "default", "alice", "session-a");
+        OidcBackChannelLogoutStore.Session oldTwo = session(store, "default", "alice", "session-b");
+        OidcBackChannelLogoutStore.Session bob = session(store, "default", "bob", null);
         OidcBackChannelLogoutStore.LogoutEvent event = event("default", "alice", null, "event-a");
+        String inFlight = store.authorizationCheckpoint("default", ISSUER);
+        String otherTenantInFlight = store.authorizationCheckpoint("other", ISSUER);
 
         store.revoke(event, NOW.plusSeconds(3600));
 
         assertThat(store.revoked(oldOne), is(true));
         assertThat(store.revoked(oldTwo), is(true));
         assertThat(store.revoked(bob), is(false));
-        OidcBackChannelLogoutStore.Session fresh = session(store, "default", "alice", "session-new", NOW.plusSeconds(1));
+        OidcBackChannelLogoutStore.Session fresh = session(store, "default", "alice", "session-new");
         assertThat(store.revoked(fresh), is(false));
-        OidcBackChannelLogoutStore.Session staleCallback =
-                session(store, "default", "alice", "session-late", NOW.minusSeconds(30));
-        assertThat(store.revoked(staleCallback), is(true));
+        // The callback has not been established yet; its OP ID Token could have the same or a later iat.
+        assertThat(store.beginSession(identity("default", "alice", "session-late"), inFlight).isEmpty(), is(true));
+        assertThat(store.beginSession(identity("default", "bob", "bob-new"), inFlight).isPresent(), is(true));
+        assertThat(store.beginSession(identity("other", "alice", "other-new"), otherTenantInFlight).isPresent(), is(true));
 
         store.revoke(event, NOW.plusSeconds(3600));
         assertThat(store.revoked(fresh), is(false));
@@ -92,8 +95,7 @@ class OidcInMemoryLogoutStoreTest {
         store.revoke(event, retainUntil);
 
         time.set(NOW.plusSeconds(150));
-        OidcBackChannelLogoutStore.Session fresh = session(store, "default", "alice", "new-op-session",
-                                                           NOW.plusSeconds(1));
+        OidcBackChannelLogoutStore.Session fresh = session(store, "default", "alice", "new-op-session");
         assertThat(store.revoked(fresh), is(false));
 
         store.revoke(event, retainUntil);
@@ -103,15 +105,14 @@ class OidcInMemoryLogoutStoreTest {
     @Test
     void processRestartForgetsRevocationsButAcceptsStillValidCookies() {
         OidcBackChannelLogoutStore first = store(100);
-        OidcBackChannelLogoutStore.Session sidTarget = session(first, "default", "alice", "session-a", NOW);
-        OidcBackChannelLogoutStore.Session subjectTarget = session(first, "default", "alice", "session-b", NOW);
+        OidcBackChannelLogoutStore.Session sidTarget = session(first, "default", "alice", "session-a");
+        OidcBackChannelLogoutStore.Session subjectTarget = session(first, "default", "alice", "session-b");
         first.revoke(event("default", "alice", "session-a", "sid-logout"), NOW.plusSeconds(3600));
         assertThat(first.revoked(sidTarget), is(true));
         assertThat(first.revoked(subjectTarget), is(false));
         first.revoke(event("default", "alice", null, "subject-logout"), NOW.plusSeconds(3600));
         assertThat(first.revoked(subjectTarget), is(true));
-        OidcBackChannelLogoutStore.Session fresh = session(first, "default", "alice", "session-new",
-                                                           NOW.plusSeconds(1));
+        OidcBackChannelLogoutStore.Session fresh = session(first, "default", "alice", "session-new");
         assertThat(first.revoked(fresh), is(false));
 
         OidcBackChannelLogoutStore second = store(100);
@@ -129,13 +130,14 @@ class OidcInMemoryLogoutStoreTest {
     @Test
     void capacityDoesNotSilentlyDiscardARevocation() {
         OidcInMemoryLogoutStore store = store(2);
-        OidcBackChannelLogoutStore.Session source = session(store, "default", "alice", "session-a", NOW);
+        OidcBackChannelLogoutStore.Session source = session(store, "default", "alice", "session-a");
         store.revoke(event("default", "alice", "session-a", "event-a"), NOW.plusSeconds(3600));
 
         assertThat(store.revoked(source), is(true));
         assertThrows(IllegalStateException.class,
                      () -> store.revoke(event("default", "bob", "session-b", "event-b"), NOW.plusSeconds(3600)));
         assertThrows(IllegalStateException.class, () -> store.revoked(source));
+        assertThrows(IllegalStateException.class, () -> store.authorizationCheckpoint("default", ISSUER));
     }
 
     @Test
@@ -146,13 +148,13 @@ class OidcInMemoryLogoutStoreTest {
         time.set(NOW.plusSeconds(121));
         // A cookie issued before this marker's retention deadline also expired; a new session has a new OP sid.
         store.revoke(event("default", "alice", "session-b", "event-b"), NOW.plusSeconds(3600));
-        assertThat(store.revoked(session(store, "default", "alice", "session-b", NOW.plusSeconds(121))), is(true));
+        assertThat(store.revoked(session(store, "default", "alice", "session-b")), is(true));
     }
 
     @Test
     void concurrentVirtualThreadRetriesApplyOnlyOneSubjectLogout() throws Exception {
         OidcInMemoryLogoutStore store = store(100);
-        OidcBackChannelLogoutStore.Session original = session(store, "default", "alice", "session-a", NOW.minusSeconds(1));
+        OidcBackChannelLogoutStore.Session original = session(store, "default", "alice", "session-a");
         OidcBackChannelLogoutStore.LogoutEvent notification = event("default", "alice", null, "event-a");
         CountDownLatch start = new CountDownLatch(1);
         try (ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor()) {
@@ -170,7 +172,47 @@ class OidcInMemoryLogoutStoreTest {
             }
         }
         assertThat(store.revoked(original), is(true));
-        assertThat(store.revoked(session(store, "default", "alice", "new-login", NOW.plusSeconds(1))), is(false));
+        assertThat(store.revoked(session(store, "default", "alice", "new-login")), is(false));
+    }
+
+    @Test
+    void concurrentCallbackAndLogoutCannotLeaveASessionAuthenticated() throws Exception {
+        for (int attempt = 0; attempt < 32; attempt++) {
+            OidcInMemoryLogoutStore store = store(100);
+            String pendingRequest = store.authorizationCheckpoint("default", ISSUER);
+            OidcBackChannelLogoutStore.Identity identity = identity("default", "alice", "session-a");
+            CountDownLatch start = new CountDownLatch(1);
+            try (ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor()) {
+                Future<Optional<OidcBackChannelLogoutStore.Marker>> callback = executor.submit(() -> {
+                    start.await();
+                    return store.beginSession(identity, pendingRequest);
+                });
+                Future<?> logout = executor.submit(() -> {
+                    start.await();
+                    store.revoke(event("default", "alice", null, "event-a"), NOW.plusSeconds(3600));
+                    return null;
+                });
+                start.countDown();
+                Optional<OidcBackChannelLogoutStore.Marker> marker = callback.get();
+                logout.get();
+                marker.ifPresent(value -> assertThat(store.revoked(new OidcBackChannelLogoutStore.Session(identity, value)),
+                                                     is(true)));
+                assertThat(store.beginSession(identity, pendingRequest).isEmpty(), is(true));
+            }
+        }
+    }
+
+    @Test
+    void unknownCheckpointOnlyFailsClosedForSubjectWithKnownLogout() {
+        OidcInMemoryLogoutStore first = store(100);
+        String checkpoint = first.authorizationCheckpoint("default", ISSUER);
+        OidcInMemoryLogoutStore restarted = store(100);
+
+        assertThat(restarted.beginSession(identity("default", "alice", "session-a"), checkpoint).isPresent(), is(true));
+        restarted.revoke(event("default", "alice", null, "after-restart"), NOW.plusSeconds(3600));
+        assertThat(restarted.beginSession(identity("default", "alice", "session-b"), checkpoint).isEmpty(), is(true));
+        assertThat(restarted.beginSession(identity("default", "bob", "session-b"), checkpoint).isPresent(), is(true));
+        assertThat(restarted.beginSession(identity("default", "alice", "session-c"), "bad-checkpoint").isEmpty(), is(true));
     }
 
     private static OidcInMemoryLogoutStore store(int capacity) {
@@ -180,11 +222,15 @@ class OidcInMemoryLogoutStoreTest {
     private static OidcBackChannelLogoutStore.Session session(OidcBackChannelLogoutStore store,
                                                                String tenant,
                                                                String subject,
-                                                               String sid,
-                                                               Instant issuedAt) {
-        OidcBackChannelLogoutStore.Identity identity = new OidcBackChannelLogoutStore.Identity(
-                tenant, ISSUER, subject, Optional.ofNullable(sid), issuedAt, NOW.plusSeconds(3600));
-        return new OidcBackChannelLogoutStore.Session(identity, store.beginSession(identity));
+                                                               String sid) {
+        OidcBackChannelLogoutStore.Identity identity = identity(tenant, subject, sid);
+        return new OidcBackChannelLogoutStore.Session(
+                identity, store.beginSession(identity, store.authorizationCheckpoint(tenant, ISSUER)).orElseThrow());
+    }
+
+    private static OidcBackChannelLogoutStore.Identity identity(String tenant, String subject, String sid) {
+        return new OidcBackChannelLogoutStore.Identity(
+                tenant, ISSUER, subject, Optional.ofNullable(sid), NOW.plusSeconds(3600));
     }
 
     private static OidcBackChannelLogoutStore.LogoutEvent event(String tenant,

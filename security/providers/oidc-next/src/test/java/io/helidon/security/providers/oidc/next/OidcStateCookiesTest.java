@@ -66,6 +66,22 @@ class OidcStateCookiesTest {
     }
 
     @Test
+    void logoutCheckpointSurvivesProtectedAuthorizationRequestCookie() {
+        OidcTenantConfig tenant = tenant(_ -> { });
+        OidcCookieStateHandler handler = OidcCookieStateHandler.create(TENANT, tenant);
+        OidcAuthenticationRequestState initial = state(0);
+        OidcAuthenticationRequestState withCheckpoint = new OidcAuthenticationRequestState(
+                initial.tenantId(), initial.state(), initial.nonce(), initial.pkceVerifierValue(),
+                initial.browserSessionGenerationValue(), initial.expectedIssuer(), initial.originalUri(),
+                initial.redirectionEndpointUri(), initial.requestedScopes(), initial.createdAt(), initial.expiresAt(),
+                Optional.of("incarnation:42"));
+
+        List<SetCookie> cookies = handler.createAuthenticationRequestCookies(withCheckpoint, false, Map.of());
+
+        assertThat(handler.decodeAuthenticationRequestState(cookieMap(cookies)), is(Optional.of(withCheckpoint)));
+    }
+
+    @Test
     void reorderedMissingDuplicateMixedAndTamperedPiecesAreHandled() {
         OidcCookieStateHandler handler = OidcCookieStateHandler.create(TENANT, tenant(_ -> { }));
         OidcAuthenticationRequestState state = state(3000);
@@ -195,7 +211,7 @@ class OidcStateCookiesTest {
     private static OidcAuthenticationRequestState state(int length) {
         return new OidcAuthenticationRequestState(TENANT, "state", "nonce", "verifier", null, "https://issuer.example",
                 URI.create("/resource?q=" + "a".repeat(length)), URI.create("https://rp.example/callback"),
-                List.of("openid"), NOW, NOW.plusSeconds(300));
+                List.of("openid"), NOW, NOW.plusSeconds(300), Optional.empty());
     }
 
     private static Map<String, List<String>> cookieMap(List<SetCookie> cookies) {

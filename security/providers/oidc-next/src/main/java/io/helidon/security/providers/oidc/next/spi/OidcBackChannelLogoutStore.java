@@ -25,12 +25,13 @@ import io.helidon.config.NamedService;
 /**
  * Stores the revocation information required by OpenID Connect Back-Channel Logout.
  * <p>
- * Implementations shared by several server instances must provide atomic, consistently visible event application and
- * session reads. An implementation that promises continuous logout enforcement must change its incarnation and reject
- * previously issued sessions if it loses revocation records. The built-in process-local store deliberately forgets
- * revocations on restart and accepts still-valid browser cookies; it cannot offer that guarantee. Do not silently evict
- * a live revocation marker within a store's lifetime. The caller owns an application-supplied store's lifecycle; the
- * OIDC provider owns its built-in in-memory store.
+ * Implementations shared by several server instances must order authorization checkpoints, event application, and
+ * session creation atomically and make the result consistently visible across instances. An implementation that promises
+ * continuous logout enforcement must change its incarnation and reject previously issued sessions if it loses revocation
+ * records. The built-in process-local store deliberately forgets revocations on restart and accepts still-valid browser
+ * cookies; it cannot offer that guarantee across restarts or replicas. Do not silently evict a live revocation marker
+ * within a store's lifetime. The caller owns an application-supplied store's lifecycle; the OIDC provider owns its
+ * built-in in-memory store.
  * <p>
  * Helidon validates each Logout Token before calling {@link #revoke(LogoutEvent, Instant)}. This SPI must not accept
  * JWTs, route HTTP requests, or perform token validation itself.
@@ -49,14 +50,30 @@ public interface OidcBackChannelLogoutStore extends NamedService {
     }
 
     /**
-     * Obtain the current store incarnation and subject generation for a newly authenticated session. Maintain the
-     * subject generation until all cookies containing it have expired, unless this store is deliberately volatile and
-     * is restarted. The caller checks revocation before storing the returned marker in its protected browser cookie.
+     * Capture an opaque checkpoint when starting an authorization request. The caller binds it to the protected
+     * request cookie and supplies it to {@link #beginSession(Identity, String)} after validating the ID Token.
+     * Checkpoints and subject-only revocations must be ordered by this store, not by the OP's second-resolution
+     * {@code iat} claims or clocks on different RP instances. A shared store must recognize its checkpoints on every
+     * instance using it.
+     *
+     * @param tenantId tenant starting the request
+     * @param issuer exact OP issuer
+     * @return a non-blank checkpoint
+     */
+    String authorizationCheckpoint(String tenantId, String issuer);
+
+    /**
+     * Establish a newly authenticated session only if no subject-wide logout for its tenant, issuer, and subject was
+     * recorded after the authorization checkpoint. If the order cannot be established in the presence of a relevant
+     * logout, reject the request. Maintain the returned subject generation until all cookies containing it have expired,
+     * unless this store is deliberately volatile and is restarted. The caller checks revocation before storing the
+     * returned marker in its protected browser cookie.
      *
      * @param identity identity of the new session
-     * @return store marker bound to this session
+     * @param authorizationCheckpoint checkpoint from the protected authorization request cookie
+     * @return store marker bound to this session, or empty when the request was invalidated by a logout
      */
-    Marker beginSession(Identity identity);
+    Optional<Marker> beginSession(Identity identity, String authorizationCheckpoint);
 
     /**
      * Check whether a browser session has been revoked by a session-specific or subject-wide Logout Token. Shared
@@ -78,7 +95,8 @@ public interface OidcBackChannelLogoutStore extends NamedService {
      * Throw on storage failure instead of acknowledging an event that was not recorded.
      *
      * @param event validated Logout Token identity
-     * @param retainUntil later of the affected browser sessions' expiry and the Logout Token's acceptance window
+     * @param retainUntil later of the affected browser sessions' expiry, pending authorization request expiry, and
+     *                    the Logout Token's acceptance window
      */
     void revoke(LogoutEvent event, Instant retainUntil);
 
@@ -89,24 +107,27 @@ public interface OidcBackChannelLogoutStore extends NamedService {
      * @param issuer exact OP issuer
      * @param subject OP subject
      * @param sid OP session ID when issued
-     * @param originalIssuedAt issue time of the first ID Token, retained across refreshes
      * @param expiresAt absolute browser-session expiration
      */
     record Identity(String tenantId,
                     String issuer,
                     String subject,
                     Optional<String> sid,
-                    Instant originalIssuedAt,
                     Instant expiresAt) {
         /**
          * Create a stable OP identity.
+         *
+         * @param tenantId tenant owning the session
+         * @param issuer exact OP issuer
+         * @param subject OP subject
+         * @param sid OP session ID when issued
+         * @param expiresAt absolute browser-session expiration
          */
         public Identity {
             Objects.requireNonNull(tenantId);
             Objects.requireNonNull(issuer);
             Objects.requireNonNull(subject);
             Objects.requireNonNull(sid);
-            Objects.requireNonNull(originalIssuedAt);
             Objects.requireNonNull(expiresAt);
         }
     }
@@ -120,6 +141,9 @@ public interface OidcBackChannelLogoutStore extends NamedService {
     record Marker(String incarnation, String subjectGeneration) {
         /**
          * Create a marker from a reliable store lookup.
+         *
+         * @param incarnation identifies the store lifetime
+         * @param subjectGeneration changes on subject-only logout
          */
         public Marker {
             Objects.requireNonNull(incarnation);
@@ -139,6 +163,9 @@ public interface OidcBackChannelLogoutStore extends NamedService {
     record Session(Identity identity, Marker marker) {
         /**
          * Create a protected browser session.
+         *
+         * @param identity OP identity from the protected cookie
+         * @param marker store version captured when the session was established
          */
         public Session {
             Objects.requireNonNull(identity);
@@ -166,6 +193,14 @@ public interface OidcBackChannelLogoutStore extends NamedService {
                        Instant expiresAt) {
         /**
          * Create the identity of a validated Logout Token.
+         *
+         * @param tenantId tenant owning the OP client
+         * @param issuer exact OP issuer
+         * @param subject optional OP subject
+         * @param sid optional OP session ID
+         * @param jwtId mandatory Logout Token identifier
+         * @param issuedAt mandatory OP Logout Token issued-at time
+         * @param expiresAt mandatory OP Logout Token expiration time
          */
         public LogoutEvent {
             Objects.requireNonNull(tenantId);

@@ -1913,7 +1913,7 @@ class OidcAuthorizationCodeTokenExchangeTest {
         OidcTenantRuntimeRegistry tenantRuntimeRegistry = OidcTenantRuntimeRegistry.create(providerConfig);
         OidcRequestContext requestContext = new OidcRequestContext(OidcProviderTest.request(null, environment),
                                                                    tenantRuntimeRegistry);
-        return new OidcAuthenticationRequestFactory().create(requestContext, List.of());
+        return new OidcAuthenticationRequestFactory().create(requestContext, List.of(), Optional.empty());
     }
 
     private static JsonObject typedRequestPayload(String compact) throws Exception {

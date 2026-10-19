@@ -214,7 +214,7 @@ final class OidcRefreshTokenManager {
             OidcBackChannelLogoutStore.Identity original = session.identity();
             return new OidcBackChannelLogoutStore.Session(new OidcBackChannelLogoutStore.Identity(
                     original.tenantId(), original.issuer(), original.subject(), original.sid(),
-                    original.originalIssuedAt(), expiresAt), session.marker());
+                    expiresAt), session.marker());
         });
         OidcLocalAuthenticationState state = OidcLocalAuthenticationState.builder()
                 .tenantId(current.tenantId())

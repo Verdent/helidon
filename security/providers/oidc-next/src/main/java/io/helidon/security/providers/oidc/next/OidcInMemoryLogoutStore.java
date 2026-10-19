@@ -21,6 +21,7 @@ import java.time.Instant;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.locks.ReentrantLock;
 
@@ -41,8 +42,12 @@ final class OidcInMemoryLogoutStore implements OidcBackChannelLogoutStore {
     private final Map<JtiKey, RecordedEvent> jwtIds = new HashMap<>();
     private final Clock clock;
     private final int maxEntries;
+    // Pending requests need a unique incarnation to distinguish ordered callbacks from cross-restart/replica ones.
+    // Established session cookies deliberately retain the stable VOLATILE_INCARNATION across restarts.
+    private final String checkpointIncarnation = UUID.randomUUID().toString();
 
     private Instant nextCleanup = Instant.EPOCH;
+    private long subjectLogoutRevision;
     private boolean unhealthy;
 
     OidcInMemoryLogoutStore() {
@@ -58,18 +63,56 @@ final class OidcInMemoryLogoutStore implements OidcBackChannelLogoutStore {
     }
 
     @Override
-    public Marker beginSession(Identity identity) {
+    public String authorizationCheckpoint(String tenantId, String issuer) {
+        Objects.requireNonNull(tenantId);
+        Objects.requireNonNull(issuer);
+        lock.lock();
+        try {
+            requireHealthy();
+            return checkpointIncarnation + ":" + subjectLogoutRevision;
+        } finally {
+            lock.unlock();
+        }
+    }
+
+    @Override
+    public Optional<Marker> beginSession(Identity identity, String authorizationCheckpoint) {
+        Objects.requireNonNull(identity);
+        Objects.requireNonNull(authorizationCheckpoint);
         Instant now = clock.instant();
         lock.lock();
         try {
             requireHealthy();
             pruneIfNeeded(now);
             SubjectState state = subjects.get(subjectKey(identity));
+            int separator = authorizationCheckpoint.lastIndexOf(':');
+            if (separator <= 0 || separator == authorizationCheckpoint.length() - 1) {
+                return Optional.empty();
+            }
+            long revision;
+            try {
+                revision = Long.parseLong(authorizationCheckpoint.substring(separator + 1));
+            } catch (NumberFormatException _) {
+                return Optional.empty();
+            }
+            if (revision < 0) {
+                return Optional.empty();
+            }
+            String incarnation = authorizationCheckpoint.substring(0, separator);
+            if (checkpointIncarnation.equals(incarnation)) {
+                if (revision > subjectLogoutRevision || state != null && state.revision() > revision) {
+                    return Optional.empty();
+                }
+            } else if (state != null) {
+                // Checkpoints from another process cannot be ordered against local logouts. Retry the login rather
+                // than relying on the OP's second-resolution iat (or on unsynchronized clocks across RP replicas).
+                return Optional.empty();
+            }
             if (state != null && identity.expiresAt().isAfter(state.expiresAt())) {
                 subjects.put(subjectKey(identity),
-                             new SubjectState(state.generation(), identity.expiresAt(), state.revokedBefore()));
+                             new SubjectState(state.generation(), identity.expiresAt(), state.revision()));
             }
-            return new Marker(VOLATILE_INCARNATION, state == null ? INITIAL_GENERATION : state.generation());
+            return Optional.of(new Marker(VOLATILE_INCARNATION, state == null ? INITIAL_GENERATION : state.generation()));
         } finally {
             lock.unlock();
         }
@@ -94,8 +137,7 @@ final class OidcInMemoryLogoutStore implements OidcBackChannelLogoutStore {
                 return false;
             }
             // A new subject-wide logout must invalidate even a cookie issued before this process was started.
-            return !state.generation().equals(session.marker().subjectGeneration())
-                    || !identity.originalIssuedAt().isAfter(state.revokedBefore());
+            return !state.generation().equals(session.marker().subjectGeneration());
         } finally {
             lock.unlock();
         }
@@ -128,6 +170,10 @@ final class OidcInMemoryLogoutStore implements OidcBackChannelLogoutStore {
                 unhealthy = true;
                 throw new IllegalStateException("OIDC back-channel logout store capacity is exhausted");
             }
+            if (sid == null && subjectLogoutRevision == Long.MAX_VALUE) {
+                unhealthy = true;
+                throw new IllegalStateException("OIDC back-channel logout store revision is exhausted");
+            }
             if (sid != null) {
                 SidState previous = sessions.get(sid);
                 if (previous != null && previous.subject() != null && subject != null
@@ -143,8 +189,7 @@ final class OidcInMemoryLogoutStore implements OidcBackChannelLogoutStore {
                 subjects.put(subject,
                              new SubjectState(UUID.randomUUID().toString(),
                                               previous == null ? retainUntil : latest(retainUntil, previous.expiresAt()),
-                                              previous == null ? event.issuedAt()
-                                                      : latest(event.issuedAt(), previous.revokedBefore())));
+                                              ++subjectLogoutRevision));
             }
             jwtIds.put(jwtId, new RecordedEvent(event, latest(retainUntil, event.expiresAt())));
         } finally {
@@ -186,7 +231,7 @@ final class OidcInMemoryLogoutStore implements OidcBackChannelLogoutStore {
     private record JtiKey(String tenantId, String issuer, String jwtId) {
     }
 
-    private record SubjectState(String generation, Instant expiresAt, Instant revokedBefore) {
+    private record SubjectState(String generation, Instant expiresAt, long revision) {
     }
 
     private record SidState(String subject, Instant expiresAt) {

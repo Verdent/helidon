@@ -60,7 +60,7 @@ class OidcJweCriticalHeadersTest {
             URI.create("https://rp.example/oidc/callback"),
             List.of("openid"),
             VALIDATION_TIME.minusSeconds(1),
-            VALIDATION_TIME.plusSeconds(300));
+            VALIDATION_TIME.plusSeconds(300), Optional.empty());
 
     private static JwkKeys encryptionKeys;
     private static OidcValidatedIdToken signedIdToken;

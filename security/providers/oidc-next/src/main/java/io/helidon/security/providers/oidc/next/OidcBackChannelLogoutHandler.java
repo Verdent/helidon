@@ -169,14 +169,18 @@ final class OidcBackChannelLogoutHandler {
     }
 
     private Instant retainUntil(OidcTenantContext tenant, OidcBackChannelLogoutStore.LogoutEvent event, Instant now) {
-        Duration lifetime = tenant.cookieStateHandler().cookieConfig().localAuthenticationLifetime();
+        OidcCookieConfig cookies = tenant.cookieStateHandler().cookieConfig();
+        Duration lifetime = cookies.localAuthenticationLifetime().compareTo(cookies.authenticationRequestLifetime()) >= 0
+                ? cookies.localAuthenticationLifetime() : cookies.authenticationRequestLifetime();
         Duration clockSkew = tenant.tenantConfig().idToken().clockSkew();
         try {
-            Instant lastSessionExpiry = now.plus(lifetime).plus(clockSkew);
+            // An authorization callback started before this logout can arrive after every existing session expires.
+            // Retain its subject revision until both sessions and pending authorization requests have expired.
+            Instant lastAffectedExpiry = now.plus(lifetime).plus(clockSkew);
             // Until exp plus the accepted clock skew, a legitimate retry with this jti must be idempotent. Otherwise
             // replaying a subject-only Logout Token could also log out a session established after the first delivery.
             Instant lastAcceptedRetry = event.expiresAt().plus(clockSkew);
-            return lastSessionExpiry.isAfter(lastAcceptedRetry) ? lastSessionExpiry : lastAcceptedRetry;
+            return lastAffectedExpiry.isAfter(lastAcceptedRetry) ? lastAffectedExpiry : lastAcceptedRetry;
         } catch (DateTimeException | ArithmeticException _) {
             return Instant.MAX;
         }

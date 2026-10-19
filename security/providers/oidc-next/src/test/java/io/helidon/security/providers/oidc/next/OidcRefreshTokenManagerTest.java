@@ -1647,7 +1647,8 @@ class OidcRefreshTokenManagerTest {
                 OidcIdTokenDecryptor.create(tenant)).orElseThrow();
         OidcBackChannelLogoutStore store = provider.tenantRuntimeRegistry().logoutStore("default").orElseThrow();
         OidcLocalAuthenticationResult bound = unbound.withBackChannelSession(
-                OidcBackChannelSessionSupport.begin(unbound, store, false));
+                OidcBackChannelSessionSupport.begin(unbound, store,
+                                                    store.authorizationCheckpoint("default", ISSUER.toString()), false));
         return handler.createLocalAuthenticationResultCookies(bound, Map.of(), now).getFirst();
     }
 

@@ -68,6 +68,7 @@ import io.helidon.security.jwt.SignedJwt;
 import io.helidon.security.jwt.jwk.Jwk;
 import io.helidon.security.jwt.jwk.JwkKeys;
 import io.helidon.security.providers.common.TokenCredential;
+import io.helidon.security.providers.oidc.next.spi.OidcBackChannelLogoutStore;
 import io.helidon.security.providers.oidc.next.spi.OidcTenantAdapter;
 import io.helidon.webclient.api.HttpClientResponse;
 import io.helidon.webclient.api.WebClient;
@@ -479,7 +480,8 @@ class OidcFeatureRouteTest {
                                                                                          callbackUri,
                                                                                          List.of("openid", "profile"),
                                                                                          now.minusSeconds(1),
-                                                                                         now.plusSeconds(60)), false, Map.of())
+                                                                                         now.plusSeconds(60), Optional.empty()),
+                        false, Map.of())
                 .getFirst();
 
         try (HttpClientResponse response = client.get("/oidc/callback")
@@ -785,6 +787,75 @@ class OidcFeatureRouteTest {
         } finally {
             client.closeResource();
             rp.stop();
+        }
+    }
+
+    @Test
+    void backChannelLogoutRejectsPendingCallbackButAllowsSameSecondNewLogin(URI serverUri) {
+        OidcTenantConfig tenant = OidcTenantConfig.builder(tenantConfig(serverUri,
+                code -> code.redirectionEndpointUri(URI.create("/oidc/callback"))))
+                .logout(logout -> logout.backChannel(backChannel -> backChannel
+                        .uri(URI.create("http://127.0.0.1/oidc/backchannel"))))
+                .buildPrototype();
+        try (OidcProvider provider = OidcProvider.create(providerConfig(tenant))) {
+            WebServer rp = WebServer.builder().host("127.0.0.1").port(0)
+                    .addFeature(OidcFeature.create(provider)).build().start();
+            WebClient client = WebClient.builder().baseUri(rpBaseUri(rp)).build();
+            try {
+                URI resourceUri = rpBaseUri(rp).resolve("/resource");
+                AuthenticationResponse oldLogin = provider.authenticate(OidcProviderTest.request(null,
+                        SecurityEnvironment.builder().targetUri(resourceUri).transport("http").build()));
+                UriQuery oldAuthorization = UriQuery.create(URI.create(oldLogin.responseHeaders()
+                                                                             .get("Location").getFirst()));
+                String oldCookies = String.join("; ", oldLogin.responseHeaders().get("Set-Cookie").stream()
+                        .map(SetCookie::parse)
+                        .map(cookie -> cookie.name() + "=" + cookie.value())
+                        .toList());
+
+                Instant logoutIssuedAt = Instant.now().truncatedTo(ChronoUnit.SECONDS);
+                provider.tenantRuntimeRegistry().logoutStore("default").orElseThrow()
+                        .revoke(new OidcBackChannelLogoutStore.LogoutEvent(
+                                "default", ISSUER.toString(), Optional.of(SUBJECT), Optional.empty(),
+                                "subject-logout-during-login", logoutIssuedAt, logoutIssuedAt.plusSeconds(120)),
+                                logoutIssuedAt.plusSeconds(3600));
+                // An OP could issue the old callback's ID Token after its Logout Token was issued.
+                tokenEndpointResponseBody = tokenEndpointResponse(signedIdToken(oldAuthorization.first("nonce")
+                        .orElseThrow(), ISSUER.toString(), logoutIssuedAt.plusSeconds(1))).toString();
+                try (HttpClientResponse oldCallback = client.get("/oidc/callback").followRedirects(false)
+                        .queryParam("code", "old-authorization-code")
+                        .queryParam("state", oldAuthorization.first("state").orElseThrow())
+                        .header(HeaderNames.COOKIE, oldCookies).request()) {
+                    assertThat(oldCallback.status(), is(Status.UNAUTHORIZED_401));
+                }
+
+                AuthenticationResponse newLogin = provider.authenticate(OidcProviderTest.request(null,
+                        SecurityEnvironment.builder().targetUri(resourceUri).transport("http").build()));
+                UriQuery newAuthorization = UriQuery.create(URI.create(newLogin.responseHeaders()
+                                                                             .get("Location").getFirst()));
+                String newCookies = String.join("; ", newLogin.responseHeaders().get("Set-Cookie").stream()
+                        .map(SetCookie::parse)
+                        .map(cookie -> cookie.name() + "=" + cookie.value())
+                        .toList());
+                // The new ID Token's iat matches the Logout Token's iat exactly; checkpoint order decides validity.
+                tokenEndpointResponseBody = tokenEndpointResponse(signedIdToken(newAuthorization.first("nonce")
+                        .orElseThrow(), ISSUER.toString(), logoutIssuedAt)).toString();
+                try (HttpClientResponse newCallback = client.get("/oidc/callback").followRedirects(false)
+                        .queryParam("code", "new-authorization-code")
+                        .queryParam("state", newAuthorization.first("state").orElseThrow())
+                        .header(HeaderNames.COOKIE, newCookies).request()) {
+                    assertThat(newCallback.status(), is(Status.SEE_OTHER_303));
+                    SetCookie cookie = localAuthenticationCookie(newCallback, tenant);
+                    AuthenticationResponse authenticated = provider.authenticate(OidcProviderTest.request(null,
+                            SecurityEnvironment.builder().targetUri(resourceUri)
+                                    .header(HeaderNames.COOKIE.defaultCase(), newCookies + "; "
+                                            + cookie.name() + "=" + cookie.value())
+                                    .build()));
+                    assertThat(authenticated.status(), is(SecurityResponse.SecurityStatus.SUCCESS));
+                }
+            } finally {
+                client.closeResource();
+                rp.stop();
+            }
         }
     }
 
@@ -3580,7 +3651,8 @@ class OidcFeatureRouteTest {
                                                                                          callbackUri,
                                                                                          requestedScopes,
                                                                                          now.minusSeconds(1),
-                                                                                         now.plusSeconds(60)), false, Map.of())
+                                                                                         now.plusSeconds(60), Optional.empty()),
+                        false, Map.of())
                 .getFirst();
     }
 
@@ -3691,15 +3763,18 @@ class OidcFeatureRouteTest {
     }
 
     private static String signedIdToken(String nonce, String issuer) {
-        Instant now = Instant.now();
+        return signedIdToken(nonce, issuer, Instant.now());
+    }
+
+    private static String signedIdToken(String nonce, String issuer, Instant issuedAt) {
         Jwt jwt = Jwt.builder()
                 .type("JWT")
                 .subject(SUBJECT)
                 .issuer(issuer)
                 .algorithm("RS256")
                 .keyId("verify-rsa")
-                .issueTime(now)
-                .expirationTime(now.plus(1, ChronoUnit.HOURS))
+                .issueTime(issuedAt)
+                .expirationTime(Instant.now().plus(1, ChronoUnit.HOURS))
                 .addAudience(CLIENT_ID)
                 .nonce(nonce)
                 .preferredUsername(USERNAME)

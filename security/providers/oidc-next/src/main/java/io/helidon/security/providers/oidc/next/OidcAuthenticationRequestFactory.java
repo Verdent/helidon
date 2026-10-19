@@ -29,6 +29,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 
 import io.helidon.common.parameters.Parameters;
 import io.helidon.common.uri.UriQueryWriteable;
@@ -36,6 +37,7 @@ import io.helidon.http.HeaderNames;
 import io.helidon.http.SetCookie;
 import io.helidon.json.JsonString;
 import io.helidon.security.SecurityEnvironment;
+import io.helidon.security.providers.oidc.next.spi.OidcBackChannelLogoutStore;
 
 import static io.helidon.security.providers.oidc.next.OidcAuthorizationParameterSupport.requiredString;
 
@@ -61,7 +63,9 @@ final class OidcAuthenticationRequestFactory {
         };
     }
 
-    OidcAuthenticationRequest create(OidcRequestContext context, List<String> sessionRemovalCookies) {
+    OidcAuthenticationRequest create(OidcRequestContext context,
+                                     List<String> sessionRemovalCookies,
+                                     Optional<OidcBackChannelLogoutStore> logoutStore) {
         OidcTenantContext tenantContext = context.tenantContext().orElseThrow();
         OidcTenantConfig tenantConfig = tenantContext.tenantConfig();
         OidcAuthorizationCodeConfig authorizationCode = tenantConfig.authorizationCode().orElseThrow();
@@ -142,6 +146,17 @@ final class OidcAuthenticationRequestFactory {
             }
         }
 
+        // Capture the store's order before publishing the protected authorization request. The subject is not known
+        // yet; on callback the store can check whether that subject was logged out while the request was in flight.
+        Optional<String> logoutCheckpoint = logoutStore.map(store -> {
+            String checkpoint = Objects.requireNonNull(store.authorizationCheckpoint(tenantContext.tenantId(),
+                                                                                     expectedIssuer),
+                                                        "OIDC logout store returned no authorization checkpoint");
+            if (checkpoint.isBlank()) {
+                throw new IllegalStateException("OIDC logout store returned a blank authorization checkpoint");
+            }
+            return checkpoint;
+        });
         OidcAuthenticationRequestState requestState = new OidcAuthenticationRequestState(
                 tenantContext.tenantId(),
                 state,
@@ -153,7 +168,8 @@ final class OidcAuthenticationRequestFactory {
                 redirectionEndpointUri,
                 requestedScopes,
                 createdAt,
-                createdAt.plus(cookieStateHandler.cookieConfig().authenticationRequestLifetime()));
+                createdAt.plus(cookieStateHandler.cookieConfig().authenticationRequestLifetime()),
+                logoutCheckpoint);
         List<SetCookie> cookieUpdates = new ArrayList<>();
         sessionRemovalCookies.stream().map(SetCookie::parse).forEach(cookieUpdates::add);
         Map<String, List<String>> remainingCookies = new HashMap<>(context.cookies());

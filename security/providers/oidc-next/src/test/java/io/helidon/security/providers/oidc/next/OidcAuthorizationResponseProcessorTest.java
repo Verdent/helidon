@@ -22,6 +22,7 @@ import java.util.Base64;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Stream;
@@ -866,7 +867,7 @@ class OidcAuthorizationResponseProcessorTest {
         OidcAuthenticationRequestState newer = new OidcAuthenticationRequestState("default", OTHER_STATE,
                 "newer-nonce", "newer-verifier", null, ISSUER.toString(),
                 URI.create(ORIGINAL_URI + "?filter=" + "a".repeat(3000)), REDIRECTION_ENDPOINT_URI,
-                List.of("openid"), NOW, NOW.plusSeconds(60));
+                List.of("openid"), NOW, NOW.plusSeconds(60), Optional.empty());
         OidcCookieStateHandler handler = OidcCookieStateHandler.create("default", tenant);
         List<SetCookie> pieces = handler.createAuthenticationRequestCookies(newer, false, Map.of());
         assertThat(pieces, hasSize(greaterThan(1)));
@@ -1192,7 +1193,7 @@ class OidcAuthorizationResponseProcessorTest {
                                                      redirectionEndpointUri,
                                                      List.of("openid"),
                                                      NOW.minusSeconds(1),
-                                                     expiresAt);
+                                                     expiresAt, Optional.empty());
     }
 
     private static OidcProviderConfig providerConfig(String tenantId, OidcTenantConfig tenantConfig) {

@@ -19,6 +19,7 @@ package io.helidon.security.providers.oidc.next;
 import java.net.URI;
 import java.time.Instant;
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 
 record OidcAuthenticationRequestState(String tenantId,
@@ -31,10 +32,12 @@ record OidcAuthenticationRequestState(String tenantId,
                                       URI redirectionEndpointUri,
                                       List<String> requestedScopes,
                                       Instant createdAt,
-                                      Instant expiresAt) {
+                                      Instant expiresAt,
+                                      Optional<String> logoutCheckpoint) {
 
     OidcAuthenticationRequestState {
         requestedScopes = List.copyOf(requestedScopes);
+        Objects.requireNonNull(logoutCheckpoint);
     }
 
     Optional<String> pkceVerifier() {

@@ -314,9 +314,12 @@ public final class OidcFeature implements HttpFeature, ServerFeature {
             try {
                 boolean sessionRequired = tenantContext.tenantConfig().logout().orElseThrow()
                         .backChannel().orElseThrow().sessionRequired();
+                String checkpoint = state.logoutCheckpoint()
+                        .orElseThrow(OidcBackChannelSessionSupport.SessionRevokedException::new);
                 localAuthenticationResult = localAuthenticationResult.withBackChannelSession(
                         OidcBackChannelSessionSupport.begin(localAuthenticationResult,
                                                             logoutStore.orElseThrow(),
+                                                            checkpoint,
                                                             sessionRequired));
             } catch (OidcBackChannelSessionSupport.SessionRevokedException _) {
                 response.status(Status.UNAUTHORIZED_401).send("OIDC login session was logged out");

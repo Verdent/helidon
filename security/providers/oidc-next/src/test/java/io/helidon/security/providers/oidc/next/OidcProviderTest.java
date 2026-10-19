@@ -2164,7 +2164,8 @@ class OidcProviderTest {
 
     private static OidcAuthenticationRequestState lifetimeAuthenticationRequest(Instant now) {
         return new OidcAuthenticationRequestState("default", "state", "nonce", null, "generation", ISSUER.toString(),
-                ORIGINAL_URI, REDIRECTION_ENDPOINT_URI, List.of("openid", "profile"), now, now.plusSeconds(300));
+                ORIGINAL_URI, REDIRECTION_ENDPOINT_URI, List.of("openid", "profile"), now, now.plusSeconds(300),
+                Optional.empty());
     }
 
     private static String tamperCookieValue(String value) {

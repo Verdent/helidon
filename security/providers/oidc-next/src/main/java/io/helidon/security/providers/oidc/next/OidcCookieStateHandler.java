@@ -573,6 +573,7 @@ final class OidcCookieStateHandler {
         state.pkceVerifier().ifPresent(pkceVerifier -> builder.set("pkce_verifier", pkceVerifier));
         state.browserSessionGeneration()
                 .ifPresent(generation -> builder.set("browser_session_generation", generation));
+        state.logoutCheckpoint().ifPresent(checkpoint -> builder.set("logout_checkpoint", checkpoint));
         return builder.build();
     }
 
@@ -594,7 +595,6 @@ final class OidcCookieStateHandler {
                                                                accessTokenExpiresAt.toString()));
         result.backChannelSession().ifPresent(session -> {
             JsonObject.Builder binding = JsonObject.builder()
-                    .set("original_issued_at", session.identity().originalIssuedAt().toString())
                     .set("incarnation", session.marker().incarnation())
                     .set("subject_generation", session.marker().subjectGeneration());
             session.identity().sid().ifPresent(sid -> binding.set("sid", sid));
@@ -616,7 +616,8 @@ final class OidcCookieStateHandler {
                 OidcScopeSupport.parseScopeString(json.stringValue("requested_scope").orElseThrow(),
                                                  "Authentication Request scope"),
                 Instant.parse(json.stringValue("created_at").orElseThrow()),
-                Instant.parse(json.stringValue("expires_at").orElseThrow()));
+                Instant.parse(json.stringValue("expires_at").orElseThrow()),
+                json.stringValue("logout_checkpoint"));
     }
 
     private OidcLocalAuthenticationResult localAuthenticationResultFromJson(JsonObject json,
@@ -642,7 +643,6 @@ final class OidcCookieStateHandler {
                                 jwt.issuer().orElseThrow(),
                                 jwt.subject().orElseThrow(),
                                 binding.stringValue("sid"),
-                                Instant.parse(binding.stringValue("original_issued_at").orElseThrow()),
                                 expiresAt),
                         new OidcBackChannelLogoutStore.Marker(binding.stringValue("incarnation").orElseThrow(),
                                                                binding.stringValue("subject_generation").orElseThrow())));

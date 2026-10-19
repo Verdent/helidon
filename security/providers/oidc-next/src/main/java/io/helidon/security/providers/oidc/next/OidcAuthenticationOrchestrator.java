@@ -197,8 +197,11 @@ final class OidcAuthenticationOrchestrator {
     private AuthenticationResponse authorizationCodeFlow(OidcRequestContext context,
                                                           List<String> localAuthenticationRemovalCookie) {
         try {
+            String tenantId = context.tenantContext().orElseThrow().tenantId();
             return OidcResponseFactory.authorizationCodeFlowInitiated(
-                    authenticationRequestFactory.create(context, localAuthenticationRemovalCookie));
+                    authenticationRequestFactory.create(context,
+                                                        localAuthenticationRemovalCookie,
+                                                        tenantRuntimeRegistry.logoutStore(tenantId)));
         } catch (OidcCookieStateHandler.AuthenticationRequestCookieException _) {
             return OidcResponseFactory.authorizationCodeFlowTooLarge(localAuthenticationRemovalCookie);
         } catch (RuntimeException e) {

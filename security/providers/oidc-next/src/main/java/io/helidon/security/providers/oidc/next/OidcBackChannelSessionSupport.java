@@ -33,6 +33,7 @@ final class OidcBackChannelSessionSupport {
 
     static OidcBackChannelLogoutStore.Session begin(OidcLocalAuthenticationResult result,
                                                     OidcBackChannelLogoutStore store,
+                                                    String authorizationCheckpoint,
                                                     boolean sessionRequired) {
         Jwt jwt = result.idToken().jwt();
         Optional<String> sid = sid(jwt, "OP ID Token");
@@ -44,11 +45,12 @@ final class OidcBackChannelSessionSupport {
                 jwt.issuer().orElseThrow(),
                 jwt.subject().orElseThrow(),
                 sid,
-                jwt.issueTime().orElseThrow(),
                 result.expiresAt());
         OidcBackChannelLogoutStore.Session session;
         try {
-            session = new OidcBackChannelLogoutStore.Session(identity, store.beginSession(identity));
+            session = new OidcBackChannelLogoutStore.Session(
+                    identity, store.beginSession(identity, authorizationCheckpoint)
+                            .orElseThrow(SessionRevokedException::new));
             if (store.revoked(session)) {
                 throw new SessionRevokedException();
             }
@@ -97,7 +99,7 @@ final class OidcBackChannelSessionSupport {
             OidcBackChannelLogoutStore.Identity identity = original.identity();
             session = new OidcBackChannelLogoutStore.Session(new OidcBackChannelLogoutStore.Identity(
                     identity.tenantId(), identity.issuer(), identity.subject(), newSid,
-                    identity.originalIssuedAt(), identity.expiresAt()), original.marker());
+                    identity.expiresAt()), original.marker());
         }
         try {
             if (store.revoked(original) || session != original && store.revoked(session)) {

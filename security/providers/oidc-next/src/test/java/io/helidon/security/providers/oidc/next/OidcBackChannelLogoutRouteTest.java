@@ -149,7 +149,7 @@ class OidcBackChannelLogoutRouteTest {
                 assertThat(authenticate(provider, second).status(), is(SecurityResponse.SecurityStatus.FAILURE_FINISH));
 
                 SetCookie newLogin = localAuthenticationCookie(provider, tenant, "op-session-new",
-                                                               Instant.now().plusSeconds(5));
+                        SignedJwt.parseToken(subOnly).getJwt().issueTime().orElseThrow());
                 assertThat(authenticate(provider, newLogin).status(), is(SecurityResponse.SecurityStatus.SUCCESS));
                 assertThat(postLogout(client, uri, subOnly), is(Status.OK_200));
                 assertThat(authenticate(provider, newLogin).status(), is(SecurityResponse.SecurityStatus.SUCCESS));
@@ -261,10 +261,14 @@ class OidcBackChannelLogoutRouteTest {
                         .expirationTime(Instant.now().plusSeconds(180)));
                 Instant expiresAt = SignedJwt.parseToken(token).getJwt().expirationTime().orElseThrow();
 
+                Instant beforePost = Instant.now();
                 assertThat(postLogout(client, uri, token), is(Status.OK_200));
 
                 // A subject-only replay after a fresh login must not advance its generation a second time.
                 assertThat(store.retainUntil.get().isBefore(expiresAt.plus(tenant.idToken().clockSkew())), is(false));
+                // A pending authorization callback also needs its revocation marker until the state cookie expires.
+                assertThat(store.retainUntil.get().isBefore(beforePost.plus(tenant.cookies()
+                                                                           .authenticationRequestLifetime())), is(false));
             } finally {
                 server.stop();
                 client.closeResource();
@@ -306,7 +310,8 @@ class OidcBackChannelLogoutRouteTest {
                         .expiresAt(now.plusSeconds(3600))
                         .buildPrototype());
         OidcBackChannelLogoutStore store = provider.tenantRuntimeRegistry().logoutStore("default").orElseThrow();
-        result = result.withBackChannelSession(OidcBackChannelSessionSupport.begin(result, store, false));
+        result = result.withBackChannelSession(OidcBackChannelSessionSupport.begin(
+                result, store, store.authorizationCheckpoint("default", ISSUER), false));
         return OidcCookieStateHandler.create("default", tenant)
                 .createLocalAuthenticationResultCookies(result, Map.of(), now).getFirst();
     }
@@ -363,9 +368,15 @@ class OidcBackChannelLogoutRouteTest {
         private final AtomicReference<Instant> retainUntil = new AtomicReference<>();
 
         @Override
-        public Marker beginSession(Identity identity) {
+        public String authorizationCheckpoint(String tenantId, String issuer) {
             requireAvailable();
-            return delegate.beginSession(identity);
+            return delegate.authorizationCheckpoint(tenantId, issuer);
+        }
+
+        @Override
+        public Optional<Marker> beginSession(Identity identity, String authorizationCheckpoint) {
+            requireAvailable();
+            return delegate.beginSession(identity, authorizationCheckpoint);
         }
 
         @Override

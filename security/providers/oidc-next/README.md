@@ -1904,6 +1904,9 @@ revocation; a valid token returns HTTP 200, invalid or failed logout returns HTT
 existing sessions for that issuer/subject, not later new logins. On the next browser request the RP rejects the revoked
 cookie **before** it can refresh or propagate its
 access token. This does not remotely revoke access tokens already accepted by another resource server.
+An authorization request carries a protected logout-store checkpoint: a callback started before a subject-only logout
+cannot establish a new session afterwards, while a new request started after the logout can log in even when the OP's
+ID Token and Logout Token have the same `iat` second. This ordering uses the store, not comparisons of OP token clocks.
 
 The built-in store exists **only in memory** and keeps no session or revocation file. After a restart, still-valid
 protected browser cookies continue to work: previously recorded revocations are forgotten, including a logout for a
@@ -1913,7 +1916,10 @@ runtime on one server, not load-balanced replicas: another replica cannot see th
 logout enforcement across restarts or instances, provide a shared, strongly consistent
 `OidcBackChannelLogoutStore` implementation via the Java builder or an explicitly selected
 `OidcBackChannelLogoutStoreProvider`. The HTTP feature and authentication provider must consult the same backing
-store. An independent `OidcFeature.create(config)` refuses the default per-runtime memory store for this reason.
+store. A shared store must also order authorization checkpoints, logout notifications, and session creation across
+replicas. The default volatile store accepts pending requests from another incarnation when it has no relevant logout;
+if a relevant logout was recorded, it rejects a callback it cannot safely order. An independent
+`OidcFeature.create(config)` refuses the default per-runtime memory store for this reason.
 The built-in store holds at most 100,000 live markers per tenant; if capacity is exhausted, it fails closed until
 restart, which forgets those markers. Store failures fail closed for browser authentication while the store is running
 and are never acknowledged as a successful logout POST.

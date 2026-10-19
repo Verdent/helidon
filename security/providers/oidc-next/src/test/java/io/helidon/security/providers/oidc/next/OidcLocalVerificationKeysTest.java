@@ -355,6 +355,6 @@ class OidcLocalVerificationKeysTest {
     private OidcAuthenticationRequestState requestState() {
         return new OidcAuthenticationRequestState("tenant", "state", "nonce", "pkce", null, issuer.toString(),
                 URI.create("https://rp.example/resource"), URI.create("https://rp.example/callback"),
-                List.of("openid"), NOW.minusSeconds(1), NOW.plusSeconds(300));
+                List.of("openid"), NOW.minusSeconds(1), NOW.plusSeconds(300), Optional.empty());
     }
 }

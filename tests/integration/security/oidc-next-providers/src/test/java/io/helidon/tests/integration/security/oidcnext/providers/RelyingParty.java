@@ -224,7 +224,7 @@ final class RelyingParty implements AutoCloseable {
         }
     }
 
-    private static JsonObject subject() {
+    static JsonObject subject() {
         Subject subject = Contexts.context().flatMap(context -> context.get(SecurityContext.class))
                 .flatMap(SecurityContext::user).orElseThrow();
         Object email = subject.principal().abacAttributeRaw("email");

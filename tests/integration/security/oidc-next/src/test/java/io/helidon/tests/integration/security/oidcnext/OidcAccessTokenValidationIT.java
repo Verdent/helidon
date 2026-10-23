@@ -235,7 +235,7 @@ class OidcAccessTokenValidationIT {
     }
 
     @Test
-    void protectedResourceReloadsJwksWhenAccessTokenKeyIdIsUnknown() {
+    void protectedResourceReloadsJwksOnLaterRequestWhenAccessTokenKeyIdIsUnknown() {
         AtomicInteger jwksResponses = new AtomicInteger();
         try (TestOidcServer idp = TestOidcServer.builder()
                 .client(SERVICE_CLIENT, SERVICE_SECRET)
@@ -267,6 +267,15 @@ class OidcAccessTokenValidationIT {
                         .baseUri(rpBaseUri)
                         .build();
                 try {
+                    // The first request loads the empty JWK Set and fails closed without immediately fetching it twice.
+                    try (HttpClientResponse response = client.get("/api")
+                            .header(HeaderNames.AUTHORIZATION, "Bearer " + accessToken)
+                            .request()) {
+                        assertThat(response.status(), is(Status.UNAUTHORIZED_401));
+                    }
+                    assertThat(idp.jwksRequests().size(), is(1));
+
+                    // A later request sees the unknown kid in the cached set and reloads the newly published keys.
                     try (HttpClientResponse response = client.get("/api")
                             .header(HeaderNames.AUTHORIZATION, "Bearer " + accessToken)
                             .request()) {

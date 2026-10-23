@@ -667,6 +667,32 @@ class OidcIntrospectionAccessTokenValidationTest {
     }
 
     @Test
+    void nestedGroupsExtensionDoesNotInvalidateIntrospection() {
+        responseBody = validResponse(it -> it.set("groups", groups -> groups
+                .setStrings("roles", List.of("nested-admin")))).toString();
+
+        try (OidcProvider defaultProvider = provider();
+                OidcProvider mappedProvider = provider(tenant -> tenant.subjectMapping(mapping -> mapping
+                        .roleClaimPaths(List.of("groups.roles"))))) {
+            AuthenticationResponse defaultResponse = authenticate(defaultProvider, OPAQUE_TOKEN);
+            assertThat(defaultResponse.status(), is(SecurityResponse.SecurityStatus.SUCCESS));
+            assertThat(defaultResponse.user().orElseThrow().grants(Role.class)
+                               .stream().map(Role::getName).toList(), is(List.of()));
+
+            AuthenticationResponse mappedResponse = authenticate(mappedProvider, OPAQUE_TOKEN);
+            assertThat(mappedResponse.status(), is(SecurityResponse.SecurityStatus.SUCCESS));
+            assertThat(mappedResponse.user().orElseThrow().grants(Role.class)
+                               .stream().map(Role::getName).toList(), is(List.of("nested-admin")));
+
+            responseBody = validResponse(it -> it
+                    .set("groups", groups -> groups.setStrings("roles", List.of("nested-admin")))
+                    .setStrings("aud", List.of("api://other"))).toString();
+            assertInvalidToken(authenticate(mappedProvider, OPAQUE_TOKEN),
+                               "Bearer Token introspection claims are invalid");
+        }
+    }
+
+    @Test
     void standardScopeClaimMustBeStringForIntrospection() {
         responseBody = validResponse(it -> it.setStrings("scope", List.of("resource.read"))).toString();
 

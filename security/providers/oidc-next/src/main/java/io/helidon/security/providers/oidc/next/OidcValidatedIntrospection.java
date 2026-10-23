@@ -156,7 +156,7 @@ final class OidcValidatedIntrospection implements OidcValidatedAccessToken {
         instantClaim(claims, "nbf").ifPresent(builder::notBefore);
         stringClaim(claims, "sub").ifPresent(builder::subject);
         stringListClaim(claims, "aud").forEach(builder::addAudience);
-        stringListClaim(claims, "groups").forEach(builder::addUserGroup);
+        // RFC 7662 permits service-specific claims; role mapping reads the original JSON, where groups may be an object.
         return builder.build();
     }
 

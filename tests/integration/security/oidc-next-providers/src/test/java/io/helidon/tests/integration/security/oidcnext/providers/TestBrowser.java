@@ -21,6 +21,7 @@ import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Optional;
+import java.util.function.Consumer;
 import java.util.stream.Collectors;
 
 import io.helidon.common.parameters.Parameters;
@@ -41,7 +42,12 @@ final class TestBrowser implements AutoCloseable {
     }
 
     HttpClientResponse get(URI uri) throws Exception {
+        return get(uri, _ -> { });
+    }
+
+    HttpClientResponse get(URI uri, Consumer<HttpClientRequest> customize) throws Exception {
         HttpClientRequest request = client.get().uri(uri);
+        customize.accept(request);
         addCookies(uri, request);
         HttpClientResponse response = request.request();
         remember(uri, response);

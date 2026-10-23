@@ -44,9 +44,18 @@ import org.testcontainers.utility.MountableFile;
 
 final class KeycloakAdapter implements IdpAdapter {
     private static final Pattern LOGIN_ACTION = Pattern.compile("<form[^>]+action=\"([^\"]+/login-actions/authenticate[^\"]*)\"");
+    private final String issuerHost;
     private GenericContainer<?> container;
     private URI issuer;
     private WebClientConfig client;
+
+    KeycloakAdapter() {
+        this(null);
+    }
+
+    KeycloakAdapter(String issuerHost) {
+        this.issuerHost = issuerHost;
+    }
 
     @Override
     public void start() throws Exception {
@@ -70,7 +79,8 @@ final class KeycloakAdapter implements IdpAdapter {
                     .waitingFor(Wait.forHttp("/realms/contract/.well-known/openid-configuration").forPort(8443)
                             .usingTls().allowInsecure().withStartupTimeout(Duration.ofMinutes(4)));
             container.start();
-            issuer = URI.create("https://" + container.getHost() + ":" + container.getMappedPort(8443) + "/realms/contract");
+            issuer = URI.create("https://" + (issuerHost == null ? container.getHost() : issuerHost) + ":"
+                                        + container.getMappedPort(8443) + "/realms/contract");
             client = IdpResources.webClient(container.getHost());
         } finally {
             Files.deleteIfExists(realm);
@@ -275,7 +285,9 @@ final class KeycloakAdapter implements IdpAdapter {
     }
 
     private static JsonObject realm() {
-        JsonObject user = JsonObject.builder().set("username", "alice").set("enabled", true)
+        // Separate Keycloak servers deliberately issue the same sub, so tenant isolation cannot rely on sub alone.
+        JsonObject user = JsonObject.builder().set("id", "00000000-0000-4000-8000-000000000001")
+                .set("username", "alice").set("enabled", true)
                 .set("email", "alice@example.org").set("emailVerified", true)
                 .set("firstName", "Alice").set("lastName", "Example")
                 .setStrings("realmRoles", List.of("offline_access"))

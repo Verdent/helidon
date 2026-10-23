@@ -34,6 +34,22 @@ The existing `oidc-next-keycloak` module retains its specialized coverage. The s
 malformed responses, time boundaries, concurrency, and other cases which cannot reliably
 be induced in a real provider.
 
+`KeycloakMultiTenantIT` runs two independent Keycloak servers against one Helidon RP.
+Both realms issue tokens for the same user `sub`, but have different HTTPS issuers and
+signing keys. The RP selects tenants by request path, or by an explicit tenant header
+that takes precedence over the path; an unknown header never falls through to the path.
+One scenario deliberately assigns different client IDs, requested scopes, and JWT versus
+introspection validation to the tenants. It completes overlapping logins out of order
+through one callback even when its header names the other tenant, checks issuer-qualified
+identities and Bearer-token selection,
+rejects cross-tenant session cookies even when their names are changed, and checks that
+the redirect and state cookie follow the selected tenant. Another scenario rejects an
+authorization response whose issuer and code belong to a different tenant's pending
+login. A focused OP-initiated logout scenario checks that a notification from one issuer
+revokes only that issuer's RP session; a refresh scenario checks that rotating one tenant's
+session does not replace the other tenant's cookie. The OPs use distinct SAN-covered hostnames so
+their browser cookies do not collide merely because both containers have the same realm path.
+
 ## Provider settings and exceptions
 
 | Provider | Image | JWT access token profile | Exceptions |
@@ -99,7 +115,7 @@ or token is granted by this fallback. Enable `REFRESH_TOKEN_REVOCATION` and remo
 provider regression when the native endpoint returns the standard terminal error.
 
 The suite therefore has five Authelia skips: two unsupported features and three specific
-provider incompatibilities. All other shared scenarios run for both providers.
+provider incompatibilities. All other shared scenarios run for Keycloak and Authelia.
 
 ## Refresh, revocation, and key rotation
 
@@ -115,9 +131,10 @@ clock skew does not control browser refresh.
 The separate Authelia regression verifies its nonstandard server-error response.
 Access-token revocation is tested through live introspection, not local JWT verification.
 
-Key rotation tests keep the same RP running, count its actual JWKS requests, and configure
-zero delay for refreshing an unknown `kid`. The adapter installs a new signing key while
-retaining the old public key. Both tokens must validate; the JWKS request count must rise
+For providers with a configured signing-key rotation hook, key rotation tests keep the same
+RP running, count its actual JWKS requests, and configure zero delay for refreshing an
+unknown `kid`. The adapter installs a new signing key while retaining the old public key.
+Both tokens must validate; the JWKS request count must rise
 once for the new key. Closing the rotation restores the original provider configuration.
 
 ## Running
@@ -141,7 +158,7 @@ mvn -f tests/integration/security/oidc-next-providers/pom.xml \
 Image overrides are `helidon.tests.authelia.image` and `helidon.tests.keycloak.image`.
 Keep defaults pinned and recheck the capability matrix when upgrading.
 
-Each provider class owns one container. Relying parties and downstream Helidon servers
+Keycloak and Authelia each use one provider container. Relying parties and downstream Helidon servers
 use ephemeral HTTPS ports. Keycloak updates redirect URIs through its admin API; Authelia
 reloads its file configuration by restarting the process within the same container,
 preserving its SQLite storage. Its file users, SQLite storage, and in-memory sessions

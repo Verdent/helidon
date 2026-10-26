@@ -136,6 +136,61 @@ interface OidcTokenValidationConfigBlueprint {
     Optional<ResourceConfig> verificationJwk();
 
     /**
+     * Local private JWK Set used to decrypt JWT access tokens issued for this resource server.
+     * <p>
+     * This is not the issuer's public signing JWK Set, nor the RP's ID Token decryption key. Keys are loaded once per
+     * ready tenant, and URI-backed sources are rejected before opening. A configured key requires explicit
+     * {@link #allowedEncryptionAlgorithms()} and {@link #allowedContentEncryptionAlgorithms()} matching the algorithms
+     * agreed with the authorization server. Without this option, encrypted tokens are rejected by local JWT validation.
+     * RSA decryption keys must be at least 2048 bits.
+     *
+     * @return private access-token decryption JWK Set resource configuration
+     */
+    @Option.Configured("decryption-jwk")
+    @Option.Confidential
+    Optional<ResourceConfig> decryptionJwk();
+
+    /**
+     * Agreed JWE key management algorithms for encrypted JWT access tokens.
+     * <p>
+     * Must be nonempty when {@link #decryptionJwk()} is configured; otherwise it must be empty. Supported values are
+     * {@code RSA-OAEP-256} and {@code RSA-OAEP}. Values are case-sensitive and unsupported algorithms are rejected
+     * when an enabled tenant is built. If more than one algorithm is allowed, every decryption JWK must declare its
+     * own {@code alg} so a single key cannot be used with both algorithms.
+     *
+     * @return allowed access-token JWE key management algorithms
+     */
+    @Option.Configured
+    @Option.Singular("allowedEncryptionAlgorithm")
+    List<String> allowedEncryptionAlgorithms();
+
+    /**
+     * Agreed JWE content encryption algorithms for encrypted JWT access tokens.
+     * <p>
+     * Must be nonempty when {@link #decryptionJwk()} is configured; otherwise it must be empty. Supported values are
+     * {@code A128GCM}, {@code A192GCM}, {@code A256GCM}, {@code A128CBC-HS256}, {@code A192CBC-HS384}, and
+     * {@code A256CBC-HS512}. Values are case-sensitive and unsupported algorithms are rejected for enabled tenants.
+     *
+     * @return allowed access-token JWE content encryption algorithms
+     */
+    @Option.Configured
+    @Option.Singular("allowedContentEncryptionAlgorithm")
+    List<String> allowedContentEncryptionAlgorithms();
+
+    /**
+     * Whether to reject signed-only JWT access tokens.
+     * <p>
+     * Defaults to {@code true} when {@link #decryptionJwk()} is configured, and {@code false} otherwise. Set to
+     * {@code false} explicitly only when accepting both signed-only and encrypted access tokens is necessary;
+     * RFC 9068 recommends rejecting unencrypted access tokens when encryption was negotiated.
+     * {@code true} requires a decryption key and {@link #method()} set to {@link OidcTokenValidationMethod#JWT}.
+     *
+     * @return explicit encryption requirement, if any
+     */
+    @Option.Configured
+    Optional<Boolean> encryptionRequired();
+
+    /**
      * Public JWK Set URI for independently validated JWT access tokens.
      * <p>
      * Configure this when the access-token issuer differs from the OIDC issuer or uses different signing keys. The

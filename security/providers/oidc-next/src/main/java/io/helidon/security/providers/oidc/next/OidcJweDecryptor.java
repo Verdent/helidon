@@ -40,6 +40,18 @@ final class OidcJweDecryptor {
         return new OidcJweDecryptor(decryptionJwk.map(resource -> loadKeys(resource, configKey)), tokenDescription);
     }
 
+    void validateKeyAlgorithms(List<String> allowedAlgorithms) {
+        // RFC 8725, 3.1: a private key must not be usable with multiple JWE key-management algorithms.
+        if (allowedAlgorithms.stream().distinct().count() > 1) {
+            for (Jwk key : decryptionKeys.orElseThrow().keys()) {
+                if (key.declaredAlgorithm().filter(allowedAlgorithms::contains).isEmpty()) {
+                    throw new IllegalArgumentException(tokenDescription + " decryption JWK alg must identify an allowed "
+                            + "JWE algorithm when multiple key-management algorithms are configured");
+                }
+            }
+        }
+    }
+
     byte[] decrypt(String token, JwtHeaders headers) {
         /*
          * RFC 7516 sections 4.1.13 and 5.2 require processing all critical JWE extensions.

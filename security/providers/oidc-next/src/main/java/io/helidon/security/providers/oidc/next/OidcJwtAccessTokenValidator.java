@@ -16,7 +16,12 @@
 
 package io.helidon.security.providers.oidc.next;
 
+import java.nio.ByteBuffer;
+import java.nio.charset.CharacterCodingException;
+import java.nio.charset.CodingErrorAction;
+import java.nio.charset.StandardCharsets;
 import java.time.Instant;
+import java.util.Arrays;
 import java.util.Locale;
 import java.util.Optional;
 
@@ -24,6 +29,7 @@ import io.helidon.common.Errors;
 import io.helidon.json.JsonObject;
 import io.helidon.json.JsonValueType;
 import io.helidon.security.jwt.Jwt;
+import io.helidon.security.jwt.JwtHeaders;
 import io.helidon.security.jwt.JwtScope;
 import io.helidon.security.jwt.JwtValidator;
 import io.helidon.security.jwt.SignedJwt;
@@ -38,11 +44,30 @@ final class OidcJwtAccessTokenValidator implements OidcAccessTokenValidator {
     public OidcValidationResult<OidcValidatedAccessToken> validate(OidcAccessTokenValidationRequest request) {
         String token = request.token();
         OidcTenantContext tenantContext = request.tenantContext();
-        SignedJwt signedJwt;
+        OidcTokenValidationConfig tokenValidation = tenantContext.tokenValidation();
+        JwtHeaders tokenHeaders;
         try {
-            signedJwt = SignedJwt.parseToken(token);
+            tokenHeaders = JwtHeaders.parseToken(token);
         } catch (RuntimeException e) {
-            return OidcValidationResult.failure("Bearer Token is not a valid signed JWT", e);
+            return OidcValidationResult.failure("Bearer Token is not a valid JWT", e);
+        }
+
+        SignedJwt signedJwt;
+        if (tokenHeaders.encryption().isPresent()) {
+            try {
+                signedJwt = decryptAccessToken(token, tokenHeaders, tenantContext, tokenValidation);
+            } catch (RuntimeException e) {
+                return OidcValidationResult.failure("Bearer Token JWE is invalid", e);
+            }
+        } else {
+            if (tokenValidation.encryptionRequired().orElse(tokenValidation.decryptionJwk().isPresent())) {
+                return OidcValidationResult.failure("Encrypted Bearer Token is required");
+            }
+            try {
+                signedJwt = SignedJwt.parseToken(tokenHeaders, token);
+            } catch (RuntimeException e) {
+                return OidcValidationResult.failure("Bearer Token is not a valid signed JWT", e);
+            }
         }
 
         Jwt jwt;
@@ -52,7 +77,10 @@ final class OidcJwtAccessTokenValidator implements OidcAccessTokenValidator {
             return OidcValidationResult.failure("Bearer Token JWT payload is invalid", e);
         }
 
-        OidcTokenValidationConfig tokenValidation = tenantContext.tokenValidation();
+        if (tokenHeaders.encryption().isPresent() && !replicatedClaimsMatch(tokenHeaders, jwt)) {
+            // RFC 7519, 5.3: do not accept contradictory claims replicated in the authenticated JWE header.
+            return OidcValidationResult.failure("Bearer Token JWE headers contradict signed claims");
+        }
         Errors headerErrors = headerValidator(tokenValidation).validate(jwt);
         if (!headerErrors.isValid()) {
             return OidcValidationResult.failure("Bearer Token JWS header is invalid");
@@ -116,6 +144,45 @@ final class OidcJwtAccessTokenValidator implements OidcAccessTokenValidator {
         }
 
         return OidcValidationResult.success(new OidcValidatedJwt(token, signedJwt, jwt));
+    }
+
+    private SignedJwt decryptAccessToken(String token,
+                                         JwtHeaders headers,
+                                         OidcTenantContext tenantContext,
+                                         OidcTokenValidationConfig tokenValidation) {
+        // RFC 7519, 5.2: a signed-then-encrypted access token is a Nested JWT; the inner JWT must still be signed.
+        if (headers.contentType().filter("JWT"::equalsIgnoreCase).isEmpty()) {
+            throw new IllegalArgumentException("Encrypted Bearer Token must be a Nested JWT with cty=JWT");
+        }
+        if (headers.headerClaimValue("zip").isPresent()) {
+            throw new IllegalArgumentException("Compressed Bearer Token JWE is not supported");
+        }
+        if (headers.algorithm().filter(tokenValidation.allowedEncryptionAlgorithms()::contains).isEmpty()
+                || headers.encryption().filter(tokenValidation.allowedContentEncryptionAlgorithms()::contains).isEmpty()) {
+            throw new IllegalArgumentException("Bearer Token JWE algorithm is not allowed");
+        }
+        OidcJweDecryptor decryptor = tenantContext.accessTokenDecryptor()
+                .orElseThrow(() -> new IllegalArgumentException("Bearer Token decryption key is not configured"));
+        byte[] payload = decryptor.decrypt(token, headers);
+        try {
+            String nestedToken = StandardCharsets.UTF_8.newDecoder()
+                    .onMalformedInput(CodingErrorAction.REPORT)
+                    .onUnmappableCharacter(CodingErrorAction.REPORT)
+                    .decode(ByteBuffer.wrap(payload))
+                    .toString();
+            return SignedJwt.parseToken(nestedToken);
+        } catch (CharacterCodingException e) {
+            throw new IllegalArgumentException("Bearer Token JWE plaintext is not UTF-8", e);
+        } finally {
+            Arrays.fill(payload, (byte) 0);
+        }
+    }
+
+    private boolean replicatedClaimsMatch(JwtHeaders headers, Jwt jwt) {
+        // Only the signed inner claims are used for authentication; reject conflicting outer routing hints if present.
+        return (headers.issuer().isEmpty() || headers.issuer().equals(jwt.issuer()))
+                && (headers.subject().isEmpty() || headers.subject().equals(jwt.subject()))
+                && (headers.audience().isEmpty() || headers.audience().equals(jwt.audience()));
     }
 
     private JwtValidator headerValidator(OidcTokenValidationConfig tokenValidation) {

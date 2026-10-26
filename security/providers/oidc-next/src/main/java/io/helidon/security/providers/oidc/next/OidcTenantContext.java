@@ -173,6 +173,10 @@ final class OidcTenantContext {
         return resources.accessTokenJwkSetManager().orElse(resources.jwkSetManager());
     }
 
+    Optional<OidcJweDecryptor> accessTokenDecryptor() {
+        return runtimeResources().accessTokenDecryptor();
+    }
+
     OidcRemoteWorkLimiter introspectionRemoteWorkLimiter() {
         return runtimeResources().remoteWorkLimiters().introspection();
     }
@@ -261,6 +265,7 @@ final class OidcTenantContext {
                                     OidcClientAuthenticationSupport introspectionClientAuthentication,
                                     OidcJwkSetManager jwkSetManager,
                                     Optional<OidcJwkSetManager> accessTokenJwkSetManager,
+                                    Optional<OidcJweDecryptor> accessTokenDecryptor,
                                     OidcIdTokenDecryptor idTokenDecryptor,
                                     Optional<OidcUserInfoJwtProcessor> userInfoJwtProcessor,
                                     RemoteWorkLimiters remoteWorkLimiters,
@@ -295,6 +300,17 @@ final class OidcTenantContext {
                                                                                webClient,
                                                                                Clock.systemUTC(),
                                                                                tenantConfig.jwkSet()))));
+            Optional<OidcJweDecryptor> accessTokenDecryptor = tenantConfig.protectedResource()
+                    .map(OidcProtectedResourceConfig::tokenValidation)
+                    .filter(validation -> validation.method().filter(OidcTokenValidationMethod.JWT::equals).isPresent())
+                    .filter(validation -> validation.decryptionJwk().isPresent())
+                    .map(validation -> {
+                        OidcJweDecryptor decryptor = OidcJweDecryptor.create(validation.decryptionJwk(),
+                                                                              "token-validation.decryption-jwk",
+                                                                              "Bearer Token");
+                        decryptor.validateKeyAlgorithms(validation.allowedEncryptionAlgorithms());
+                        return decryptor;
+                    });
             return new RuntimeResources(OidcEndpointPolicyResolver.resolve(tenantConfig),
                                         metadata,
                                         endpointClient,
@@ -302,6 +318,7 @@ final class OidcTenantContext {
                                         OidcClientAuthenticationSupport.introspectionEndpoint(tenantConfig),
                                         jwkSetManager,
                                         accessTokenJwkSetManager,
+                                        accessTokenDecryptor,
                                         idTokenDecryptor,
                                         OidcUserInfoJwtProcessor.create(tenantConfig),
                                         RemoteWorkLimiters.create(tenantConfig),

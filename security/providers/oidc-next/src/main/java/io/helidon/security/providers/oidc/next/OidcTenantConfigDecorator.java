@@ -281,6 +281,7 @@ final class OidcTenantConfigDecorator
                 throw new IllegalArgumentException("token-validation.verification-jwk must be local key material, not a URI");
             }
         });
+        validateAccessTokenEncryption(tokenValidation);
         if (tokenValidation.allowedAlgorithms().isEmpty()) {
             throw new IllegalArgumentException("token-validation.allowed-algorithms must not be empty");
         }
@@ -319,6 +320,42 @@ final class OidcTenantConfigDecorator
                     throw new IllegalArgumentException(
                             "token-validation.allowed-algorithms must not contain blank or padded values");
                 });
+    }
+
+    private static void validateAccessTokenEncryption(OidcTokenValidationConfig tokenValidation) {
+        boolean hasKey = tokenValidation.decryptionJwk().isPresent();
+        List<String> algorithms = tokenValidation.allowedEncryptionAlgorithms();
+        List<String> contentAlgorithms = tokenValidation.allowedContentEncryptionAlgorithms();
+        if ((hasKey || !algorithms.isEmpty() || !contentAlgorithms.isEmpty()
+                || tokenValidation.encryptionRequired().isPresent())
+                && tokenValidation.method().filter(OidcTokenValidationMethod.JWT::equals).isEmpty()) {
+            throw new IllegalArgumentException("token-validation access-token encryption requires token-validation.method JWT");
+        }
+        tokenValidation.decryptionJwk().ifPresent(resource -> OidcJoseKeyPolicy.validateLocalKeyResource(
+                resource, "token-validation.decryption-jwk"));
+        if (hasKey) {
+            if (algorithms.isEmpty() || contentAlgorithms.isEmpty()) {
+                throw new IllegalArgumentException("token-validation.decryption-jwk requires nonempty "
+                        + "allowed-encryption-algorithms and allowed-content-encryption-algorithms");
+            }
+        } else if (!algorithms.isEmpty() || !contentAlgorithms.isEmpty()
+                || tokenValidation.encryptionRequired().orElse(false)) {
+            throw new IllegalArgumentException("token-validation.decryption-jwk is required for access-token encryption");
+        }
+        for (String algorithm : algorithms) {
+            if (algorithm == null || algorithm.isBlank() || !algorithm.equals(algorithm.strip())) {
+                throw new IllegalArgumentException("token-validation.allowed-encryption-algorithms must not contain "
+                        + "blank or padded values");
+            }
+            validateEncryptionAlgorithm(algorithm, "token-validation.allowed-encryption-algorithms");
+        }
+        for (String algorithm : contentAlgorithms) {
+            if (algorithm == null || algorithm.isBlank() || !algorithm.equals(algorithm.strip())) {
+                throw new IllegalArgumentException("token-validation.allowed-content-encryption-algorithms must not "
+                        + "contain blank or padded values");
+            }
+            validateContentEncryptionAlgorithm(algorithm, "token-validation.allowed-content-encryption-algorithms");
+        }
     }
 
     private static void validateCookies(OidcCookieConfig cookies, Optional<String> clientId) {

@@ -19,7 +19,10 @@ package io.helidon.security.providers.oidc.next;
 import java.net.URI;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
+import java.util.function.Consumer;
 
+import io.helidon.common.configurable.ResourceConfig;
 import io.helidon.config.Config;
 import io.helidon.config.ConfigSources;
 
@@ -45,6 +48,10 @@ class OidcJwtAccessTokenConfigTest {
         OidcJwtAccessTokenConfig config = validation.jwt().orElseThrow();
 
         assertThat(validation.audienceValidationEnabled(), is(true));
+        assertThat(validation.decryptionJwk().isEmpty(), is(true));
+        assertThat(validation.allowedEncryptionAlgorithms(), is(List.of()));
+        assertThat(validation.allowedContentEncryptionAlgorithms(), is(List.of()));
+        assertThat(validation.encryptionRequired().isEmpty(), is(true));
         assertThat(config.profile(), is(OidcJwtAccessTokenProfile.RFC_9068));
         assertThat(config.typHeaderRequired(), is(true));
         assertThat(config.allowedTypes(), is(List.of("at+jwt", "application/at+jwt")));
@@ -84,6 +91,107 @@ class OidcJwtAccessTokenConfigTest {
                 .protectedResource().orElseThrow().tokenValidation();
         assertThat(configured, is(built));
         assertThat(configured.jwt().orElseThrow().requiredStringClaims(), is(Map.of("typ", "Bearer")));
+    }
+
+    @Test
+    void encryptedAccessTokenSettingsBindFromConfigAndBuilder() {
+        Config source = Config.builder()
+                .sources(ConfigSources.create(Map.ofEntries(
+                        Map.entry("issuer", "https://issuer.example"),
+                        Map.entry("protected-resource.token-validation.method", "JWT"),
+                        Map.entry("protected-resource.token-validation.audience", "api"),
+                        Map.entry("protected-resource.token-validation.decryption-jwk.resource-path",
+                                  "oidc-next-encrypt-jwk.json"),
+                        Map.entry("protected-resource.token-validation.allowed-encryption-algorithms.0", "RSA-OAEP-256"),
+                        Map.entry("protected-resource.token-validation.allowed-content-encryption-algorithms.0", "A256GCM"),
+                        Map.entry("protected-resource.token-validation.encryption-required", "false"))))
+                .build();
+        OidcTokenValidationConfig configured = OidcProviderConfig.create(source)
+                .tenants().get("default").protectedResource().orElseThrow().tokenValidation();
+        OidcTokenValidationConfig built = jwtTenant(validation -> validation
+                        .decryptionJwk(decryptionKey())
+                        .allowedEncryptionAlgorithms(List.of("RSA-OAEP-256"))
+                        .allowedContentEncryptionAlgorithms(List.of("A256GCM"))
+                        .encryptionRequired(false))
+                .buildPrototype().protectedResource().orElseThrow().tokenValidation();
+
+        assertThat(configured, is(built));
+        assertThat(configured.encryptionRequired(), is(Optional.of(false)));
+    }
+
+    @Test
+    void accessTokenDecryptionNeedsBothExplicitAlgorithmLists() {
+        IllegalArgumentException noAlgorithms = assertThrows(IllegalArgumentException.class,
+                () -> jwtTenant(validation -> validation.decryptionJwk(decryptionKey())).buildPrototype());
+        assertThat(noAlgorithms.getMessage(), containsString("allowed-encryption-algorithms"));
+
+        IllegalArgumentException noContentAlgorithms = assertThrows(IllegalArgumentException.class,
+                () -> jwtTenant(validation -> validation
+                        .decryptionJwk(decryptionKey())
+                        .allowedEncryptionAlgorithms(List.of("RSA-OAEP-256"))).buildPrototype());
+        assertThat(noContentAlgorithms.getMessage(), containsString("allowed-content-encryption-algorithms"));
+    }
+
+    @Test
+    void accessTokenEncryptionOptionsRequireJwtModeAndPrivateKeys() {
+        assertThat(assertThrows(IllegalArgumentException.class,
+                () -> jwtTenant(validation -> validation
+                        .allowedEncryptionAlgorithms(List.of("RSA-OAEP-256"))).buildPrototype())
+                .getMessage(), containsString("decryption-jwk"));
+        assertThat(assertThrows(IllegalArgumentException.class,
+                () -> jwtTenant(validation -> validation.encryptionRequired(true)).buildPrototype())
+                .getMessage(), containsString("decryption-jwk"));
+        assertThat(assertThrows(IllegalArgumentException.class,
+                () -> jwtTenant(validation -> validation
+                        .method(OidcTokenValidationMethod.INTROSPECTION)
+                        .decryptionJwk(decryptionKey())
+                        .allowedEncryptionAlgorithms(List.of("RSA-OAEP-256"))
+                        .allowedContentEncryptionAlgorithms(List.of("A256GCM"))).buildPrototype())
+                .getMessage(), containsString("token-validation.method JWT"));
+    }
+
+    @Test
+    void accessTokenDecryptionRejectsRemoteKeysAndUnsupportedAlgorithms() {
+        ResourceConfig remoteKey = ResourceConfig.builder()
+                .uri(URI.create("http://127.0.0.1:1/private-jwks.json"))
+                .buildPrototype();
+        assertThat(assertThrows(IllegalArgumentException.class,
+                () -> jwtTenant(validation -> validation
+                        .decryptionJwk(remoteKey)
+                        .allowedEncryptionAlgorithms(List.of("RSA-OAEP-256"))
+                        .allowedContentEncryptionAlgorithms(List.of("A256GCM"))).buildPrototype())
+                .getMessage(), containsString("token-validation.decryption-jwk does not support URI"));
+
+        for (String algorithm : List.of("RSA1_5", "RSA-OAEP-512", " rsa", "")) {
+            assertThat(assertThrows(IllegalArgumentException.class,
+                    () -> jwtTenant(validation -> validation
+                            .decryptionJwk(decryptionKey())
+                            .allowedEncryptionAlgorithms(List.of(algorithm))
+                            .allowedContentEncryptionAlgorithms(List.of("A256GCM"))).buildPrototype())
+                    .getMessage(), containsString("token-validation.allowed-encryption-algorithms"));
+        }
+        for (String algorithm : List.of("none", "A256GCM ", "")) {
+            assertThat(assertThrows(IllegalArgumentException.class,
+                    () -> jwtTenant(validation -> validation
+                            .decryptionJwk(decryptionKey())
+                            .allowedEncryptionAlgorithms(List.of("RSA-OAEP-256"))
+                            .allowedContentEncryptionAlgorithms(List.of(algorithm))).buildPrototype())
+                    .getMessage(), containsString("token-validation.allowed-content-encryption-algorithms"));
+        }
+    }
+
+    private static OidcTenantConfig.Builder jwtTenant(Consumer<OidcTokenValidationConfig.Builder> customizer) {
+        return OidcTenantConfig.builder()
+                .issuer("https://issuer.example")
+                .endpoints(endpoints -> endpoints.jwksUri(URI.create("https://issuer.example/jwks")))
+                .protectedResource(resource -> resource.tokenValidation(validation -> {
+                    validation.method(OidcTokenValidationMethod.JWT).audience("api");
+                    customizer.accept(validation);
+                }));
+    }
+
+    private static ResourceConfig decryptionKey() {
+        return ResourceConfig.builder().resourcePath("oidc-next-encrypt-jwk.json").buildPrototype();
     }
 
     @Test

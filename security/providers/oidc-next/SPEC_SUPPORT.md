@@ -10,6 +10,7 @@ outside this module's role.
 
 The editions linked below are the latest **published final specifications / RFCs**
 checked against the [OpenID Foundation specification catalogue](https://openid.net/developers/specs/)
+and its [final-specification announcements](https://openid.net/category/final-specification/)
 and the [IETF OAuth working group's RFC list](https://datatracker.ietf.org/wg/oauth/documents/)
 on the date above. A newer *draft* is not silently treated as a published standard.
 "Supported" means the indicated **client-side behavior**, not every optional
@@ -58,6 +59,16 @@ not conformance certification.
   See `OidcAuthenticationRequestFactory`, `OidcAuthorizationResponseProcessor`,
   `OidcIdTokenValidator`, `OidcIdTokenDecryptor`, `OidcRefreshTokenManager`,
   `OidcUserInfoSupport` and `OidcUserInfoJwtProcessor`.
+- **Refresh/session boundary:** a locally authenticated browser session does
+  not extend beyond the *initial* validated ID Token expiry, even when refresh
+  returns a new ID Token with a later expiry; the configured local lifetime
+  may shorten it further. This is a Helidon session policy, not an OIDC Core
+  requirement to expire the RP session at that time. Concurrent refresh
+  coordination and the short rotation grace cache cover one tenant in one
+  provider runtime only: two service replicas can still redeem the same
+  rotating refresh token simultaneously unless the deployment uses session
+  affinity or the authorization server tolerates legitimate overlap. See
+  `OidcLocalAuthenticationResult` and `OidcRefreshTokenManager`.
 - **Optional request parameters, with an important limit:** scopes and
   prompts can be configured, and a tenant adapter may add validated
   parameters such as `login_hint`, `acr_values`, `max_age` and `claims`.
@@ -76,6 +87,31 @@ not conformance certification.
   Unsigned (`alg=none`) ID Tokens are also rejected: the RP requires a verifiable
   signed token even though Core allows narrower unsigned-code-flow cases.
   See `OidcAuthenticationRequestFactory`, `OidcFeature` and `OidcIdTokenValidator`.
+- **Optional claim representation not implemented:** normal ID Token/UserInfo
+  claims are supported; Core section 5.6.2's aggregated and distributed
+  claims (`_claim_names` / `_claim_sources`) are not dereferenced or independently
+  validated. In particular, the RP does not fetch an external Claims Provider
+  or verify its JWT. These optional references must not be treated as resolved,
+  verified identity attributes by an application. See `OidcUserInfoSupport`
+  and `OidcSubjectMapper`.
+
+### OpenID Connect Ephemeral Subject Identifier 1.0 (final October 2026)
+
+[Published specification](https://openid.net/specs/openid-connect-ephemeral-subject-identifier-1_0-final.html)
+
+- **Can consume a statically registered OP's ephemeral `sub`:** the ID Token
+  and UserInfo subject must still agree within one login; refreshed ID Tokens
+  retain subject continuity. A new authentication with a different ephemeral
+  `sub` creates a **different local principal**. This is expected privacy
+  behavior, so applications that need to recognize returning accounts must
+  not assume a stable identity across logins. See `OidcIdTokenValidator`,
+  `OidcUserInfoSupport`, `OidcRefreshTokenManager` and `OidcSubjectMapper`.
+- **Not negotiated by this client:** OIDC Next does not register
+  `subject_type=ephemeral` or check whether OP metadata advertises it; client
+  registration is configured outside this module. Non-reuse and 128-bit
+  unpredictability are requirements on the **OP generating** the identifier,
+  not on an RP receiving it. This feature cannot guarantee that an application's
+  other claims or account-linking policy preserve the same unlinkability.
 
 ### OpenID Connect Discovery 1.0, incorporating errata set 2 (15 December 2023)
 
@@ -145,8 +181,12 @@ this inventory follows the actual final document, not the catalogue label.
   one instance cannot see another's events. A shared implementation of
   `spi.OidcBackChannelLogoutStore` is required for distributed or durable
   enforcement. This logout invalidates Helidon's RP sessions; it does not
-  revoke access tokens at the OP. See `OidcInMemoryLogoutStore` and
-  `OidcBackChannelLogoutConfigBlueprint`.
+  revoke access or refresh tokens at the OP. The Back-Channel Logout spec
+  section 2.7 says refresh tokens issued **without** `offline_access` SHOULD
+  be revoked on logout and those issued **with** `offline_access` normally
+  SHOULD NOT be revoked. The module does not track or revoke individual OP
+  refresh tokens, so this recommendation is not implemented. See
+  `OidcInMemoryLogoutStore` and `OidcBackChannelLogoutConfigBlueprint`.
 
 ### OpenID Connect Front-Channel Logout 1.0 (12 September 2022)
 
@@ -314,6 +354,15 @@ this inventory follows the actual final document, not the catalogue label.
   bearer-token extraction. The TLS requirement also has an explicit opt-out
   for controlled deployments: do not weaken it on a public network. No
   automatic HTTP proxy or API endpoint is implied by outbound token support.
+- **Outbound audience boundary:** propagation normally requires a *validated*
+  access-token audience matching the configured target. The browser session
+  keeps the raw access token, not verified access-token claims, so its token
+  cannot generally be propagated under that default policy; the provider
+  abstains rather than guessing the audience from an opaque token. An explicit
+  policy can relax this check, but then the application takes responsibility
+  for the recipient and token audience. Endpoint-specific scope decisions and
+  RFC 6750 `insufficient_scope` challenges are application policy, not an
+  automatic feature of accepting a Bearer token.
 
 ### RFC 9700 / BCP 240 — Best Current Practice for OAuth 2.0 Security
 
@@ -526,6 +575,12 @@ this inventory follows the actual final document, not the catalogue label.
   authorization rules to the operation. Do not confuse live token
   introspection with Helidon's local logout store or assume it works when
   the OP's endpoint is unreachable.
+- **Service-specific claims:** RFC 7662 permits extension members such as
+  `groups`. A flat `groups` list works with the default role mapping; an
+  object can instead be mapped with an explicit path such as `groups.roles`.
+  Unused extension members are not coerced into standard JWT claim shapes,
+  while issuer, audience and time validation remain in place. See
+  `OidcValidatedIntrospection` and `OidcSubjectMapper`.
 
 ### RFC 9701 — JWT Response for OAuth Token Introspection
 
@@ -558,6 +613,11 @@ this inventory follows the actual final document, not the catalogue label.
   is an explicit compatibility/testing opt-out; with it, do not claim RFC
   9068-conformant resource-server validation. Custom token layouts likewise
   need a trusted issuer, appropriate signature keys and resource policy.
+- **Not supported:** encrypted JWT access tokens (JWE); the protected-resource
+  JWT validator accepts signed compact JWTs only. RFC 9068 section 4 requires
+  decryption when JWT access-token encryption was negotiated with an AS. Do not
+  register/request encrypted access tokens for an API using this validator;
+  encrypted **ID Tokens** and UserInfo are separately supported RP features.
 
 ### RFC 7009 — OAuth 2.0 Token Revocation
 

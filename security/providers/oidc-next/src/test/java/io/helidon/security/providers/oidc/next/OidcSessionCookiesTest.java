@@ -93,8 +93,11 @@ class OidcSessionCookiesTest {
         }
         assertThat(cookies.stream().mapToInt(it -> it.name().length() + 1 + it.value().length()).sum()
                            + 2 * (cookies.size() - 1), lessThanOrEqualTo(12288));
-        OidcLocalAuthenticationResult decoded = handler.readLocalAuthenticationResult(cookieMap(cookies), NOW,
-                                                                                      OidcIdTokenDecryptor.create(tenant))
+        // A request can arrive at a different RP replica after login; a fresh handler with the same tenant,
+        // client and cookie password must read every chunk of the existing session.
+        OidcCookieStateHandler otherReplica = OidcCookieStateHandler.create(TENANT, tenant);
+        OidcLocalAuthenticationResult decoded = otherReplica.readLocalAuthenticationResult(cookieMap(cookies), NOW,
+                                                                                            OidcIdTokenDecryptor.create(tenant))
                 .orElseThrow();
         assertThat(decoded.accessToken(), is(original.accessToken()));
         assertThat(decoded.refreshToken(), is(original.refreshToken()));

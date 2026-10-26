@@ -172,3 +172,12 @@ assertion and encryption keys.
 To add a provider, implement `IdpAdapter`, configure the native client modes, declare
 unsupported capabilities with precise reasons, and add a small `*OidcIT` subclass. Keep
 provider setup and login in the adapter and protocol assertions in the shared contract.
+
+## OpenID Foundation RP conformance (opt-in)
+
+The provider contracts above test interoperability with real IDPs. The separate
+[OIDF conformance module](../oidc-next-conformance/README.md) starts the official
+conformance suite, provisions fresh RP plans, and asserts both the suite results
+and the behavior of this provider. It is included in multi-module builds only
+with the `oidc-conformance` Maven profile; ordinary provider tests do not
+need the suite or its container images.

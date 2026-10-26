@@ -110,7 +110,7 @@ final class OidcLogoutHandler {
                     String browserSessionGenerationCookieName =
                             cookieStateHandler.browserSessionGenerationCookieName();
                     if (changedCookieNames.add(browserSessionGenerationCookieName)) {
-                        response.headers().addCookie(cookieStateHandler.createBrowserSessionGeneration().cookie());
+                        response.headers().addCookie(cookieStateHandler.logoutBrowserSessionGenerationCookie());
                     }
                 });
 

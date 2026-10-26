@@ -2487,6 +2487,102 @@ class OidcFeatureRouteTest {
     }
 
     @Test
+    void logoutOnlyTenantWithoutCookiePasswordClearsCookies() {
+        OidcTenantConfig tenant = OidcTenantConfig.builder()
+                .logout(_ -> { })
+                .buildPrototype();
+        WebServer rpServer = oidcFeatureServer(providerConfig(tenant));
+        try {
+            String generationName = OidcCookieStateHandler.browserSessionGenerationCookieName(tenant.cookies());
+            try (HttpClientResponse response = WebClient.builder()
+                    .baseUri(rpBaseUri(rpServer))
+                    .build()
+                    .post("/oidc/logout")
+                    .header(HeaderNames.ORIGIN, sameOrigin(rpServer))
+                    .header(HeaderNames.COOKIE,
+                            tenant.cookies().localAuthenticationCookieName() + "=old-session; "
+                                    + tenant.cookies().authenticationRequestCookieName() + "=old-request; "
+                                    + generationName + "=old-generation")
+                    .request()) {
+                assertThat(response.status(), is(Status.NO_CONTENT_204));
+                List<String> cookies = response.headers().get(HeaderNames.SET_COOKIE).allValues();
+                assertThat(cookies.size(), is(18));
+                assertRemovalCookie(cookies, tenant.cookies().localAuthenticationCookieName());
+                assertRemovalCookie(cookies, tenant.cookies().authenticationRequestCookieName());
+                assertRemovalCookie(cookies, generationName);
+            }
+        } finally {
+            rpServer.stop();
+        }
+    }
+
+    @Test
+    void logoutOnlyTenantWithoutCookiePasswordCanInitiateRpLogout() {
+        OidcTenantConfig tenant = OidcTenantConfig.builder()
+                .issuer(ISSUER.toString())
+                .clientId(CLIENT_ID)
+                .endpoints(endpoints -> endpoints.endSessionEndpointUri(END_SESSION_ENDPOINT_URI))
+                .logout(logout -> logout.endSession(endSession -> endSession
+                        .idTokenHintRequired(false)
+                        .postLogoutRedirectUri(POST_LOGOUT_REDIRECT_URI)))
+                .buildPrototype();
+        WebServer rpServer = oidcFeatureServer(providerConfig(tenant));
+        try {
+            try (HttpClientResponse response = WebClient.builder()
+                    .baseUri(rpBaseUri(rpServer))
+                    .build()
+                    .post("/oidc/logout")
+                    .followRedirects(false)
+                    .header(HeaderNames.ORIGIN, sameOrigin(rpServer))
+                    .request()) {
+                assertThat(response.status(), is(Status.SEE_OTHER_303));
+                URI location = URI.create(response.headers().first(HeaderNames.LOCATION).orElseThrow());
+                assertThat(location.getPath(), is(END_SESSION_ENDPOINT_URI.getPath()));
+                UriQuery query = UriQuery.create(location);
+                assertThat(query.first("id_token_hint").isEmpty(), is(true));
+                assertThat(query.first("client_id").orElseThrow(), is(CLIENT_ID));
+                assertThat(query.first("post_logout_redirect_uri").orElseThrow(), is(POST_LOGOUT_REDIRECT_URI.toString()));
+
+                List<String> cookies = response.headers().get(HeaderNames.SET_COOKIE).allValues();
+                assertRemovalCookie(cookies, tenant.cookies().localAuthenticationCookieName());
+                assertRemovalCookie(cookies, OidcCookieStateHandler.browserSessionGenerationCookieName(tenant.cookies()));
+            }
+        } finally {
+            rpServer.stop();
+        }
+    }
+
+    @Test
+    void logoutOnlyTenantDoesNotPreventCookieBackedTenantRotation() {
+        OidcTenantConfig logoutOnlyTenant = OidcTenantConfig.builder()
+                .logout(_ -> { })
+                .buildPrototype();
+        OidcTenantConfig browserTenant = tenantConfigWithLogout("browser-state", "browser-auth", COOKIE_PASSWORD);
+        OidcProviderConfig config = OidcProviderConfig.builder()
+                .putTenant("logout-only", logoutOnlyTenant)
+                .putTenant("browser", browserTenant)
+                .buildPrototype();
+        WebServer rpServer = oidcFeatureServer(config);
+        try {
+            try (HttpClientResponse response = WebClient.builder()
+                    .baseUri(rpBaseUri(rpServer))
+                    .build()
+                    .post("/oidc/logout")
+                    .header(HeaderNames.ORIGIN, sameOrigin(rpServer))
+                    .request()) {
+                assertThat(response.status(), is(Status.NO_CONTENT_204));
+                List<String> cookies = response.headers().get(HeaderNames.SET_COOKIE).allValues();
+                assertThat(cookies.size(), is(36));
+                assertRemovalCookie(cookies, OidcCookieStateHandler.browserSessionGenerationCookieName(
+                        logoutOnlyTenant.cookies()));
+                assertBrowserSessionGenerationCookie(cookies, browserTenant, "browser");
+            }
+        } finally {
+            rpServer.stop();
+        }
+    }
+
+    @Test
     void logoutEndpointRouteRejectsMissingSameOriginSignal() {
         OidcTenantConfig tenant = tenantConfigWithLogout();
         WebServer rpServer = oidcFeatureServer(providerConfig(tenant));

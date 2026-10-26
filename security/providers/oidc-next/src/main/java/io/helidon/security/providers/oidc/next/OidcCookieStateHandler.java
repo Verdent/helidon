@@ -210,6 +210,14 @@ final class OidcCookieStateHandler {
         return new BrowserSessionGeneration(value, cookie);
     }
 
+    SetCookie logoutBrowserSessionGenerationCookie() {
+        // A logout-only tenant without cookie protection cannot have a local browser session. Retire a stale cookie
+        // rather than trying to encrypt a replacement; cookie-backed tenants must still rotate their generation.
+        return cookieConfig.password().isPresent()
+                ? createBrowserSessionGeneration().cookie()
+                : removeCookie(browserSessionGenerationCookieName());
+    }
+
     String browserSessionGenerationCookieName() {
         return browserSessionGenerationCookieName(cookieConfig);
     }

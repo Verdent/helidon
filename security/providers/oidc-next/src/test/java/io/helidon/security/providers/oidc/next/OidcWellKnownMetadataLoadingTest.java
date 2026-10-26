@@ -229,6 +229,21 @@ class OidcWellKnownMetadataLoadingTest {
     }
 
     @Test
+    void authorizationCodeTenantRejectsDiscoveredHostlessTokenEndpoint() {
+        PROVIDER_METADATA.set(providerMetadataBuilder()
+                                      .set("token_endpoint", "https:/token")
+                                      .build()
+                                      .toString());
+
+        OidcTenantContext context = tenantContext(authorizationCodeTenantConfig());
+
+        assertThat(context.state(), is(OidcTenantState.FAILED));
+        assertThat(context.failureCause().orElseThrow().getMessage(),
+                   containsString("token-endpoint-uri must have a valid HTTP(S) authority"));
+        assertThat(WELL_KNOWN_REQUESTS.get(), is(1));
+    }
+
+    @Test
     void requestsWithoutOidcPolicyAbstainBeforeDiscovery() {
         OidcTenantConfig tenant = OidcTenantConfig.builder()
                 .issuer(issuer.toString())
@@ -2571,6 +2586,32 @@ class OidcWellKnownMetadataLoadingTest {
                                                                metadata));
 
         assertThat(thrown.getMessage(), containsString("token-endpoint-uri must use https"));
+    }
+
+    @Test
+    void mutualTlsTenantRejectsDiscoveredHostlessTokenEndpointAlias() {
+        URI httpsIssuer = URI.create("https://issuer.example");
+        OidcProviderMetadata wellKnownMetadata = OidcProviderMetadata.fromWellKnownMetadataJson(JsonObject.builder()
+                .set("issuer", httpsIssuer.toString())
+                .set("token_endpoint", httpsIssuer.resolve("/token").toString())
+                .set("mtls_endpoint_aliases", JsonObject.builder()
+                        .set("token_endpoint", "https:/mtls-token")
+                        .build())
+                .build());
+        OidcTenantConfig tenantConfig = OidcTenantConfig.builder()
+                .issuer(httpsIssuer.toString())
+                .clientId("client-id")
+                .tokenEndpointAuthenticationMethod(OidcClientAuthenticationMethod.TLS_CLIENT_AUTH)
+                .webClient(mutualTlsWebClient())
+                .endpoints(it -> it.tokenEndpointUri(httpsIssuer.resolve("/configured-token")))
+                .buildPrototype();
+        OidcProviderMetadata metadata = OidcProviderMetadata.fromStaticConfig(tenantConfig)
+                .mergeWellKnownMetadata(wellKnownMetadata);
+
+        IllegalArgumentException thrown = assertThrows(IllegalArgumentException.class,
+                () -> OidcTenantContextFactory.validateMutualTlsMetadata(tenantConfig, metadata));
+
+        assertThat(thrown.getMessage(), containsString("token-endpoint-uri must have a valid HTTP(S) authority"));
     }
 
     @Test

@@ -23,6 +23,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 
+import io.helidon.common.uri.UriAuthority;
 import io.helidon.common.uri.UriQuery;
 
 final class OidcEndpointUris {
@@ -327,10 +328,22 @@ final class OidcEndpointUris {
         if (scheme == null) {
             throw new IllegalArgumentException(configKey + " must define a URI scheme");
         }
-        if ("https".equalsIgnoreCase(scheme)) {
+        if ("https".equalsIgnoreCase(scheme) || (!tlsRequired && "http".equalsIgnoreCase(scheme))) {
+            // RFC 9110, 4.2.1/4.2.2: HTTP(S) URIs with an empty host must be rejected. In particular, a URI such
+            // as "https:/token" must not reach WebClient, which otherwise resolves its missing host to localhost.
+            // RFC 3986 registered names are valid hosts too, so do not rely on java.net.URI.getHost().
+            String authority = uri.getRawAuthority();
+            if (authority == null) {
+                throw new IllegalArgumentException(configKey + " must have a valid HTTP(S) authority");
+            }
+            try {
+                UriAuthority.createForUri(authority);
+            } catch (IllegalArgumentException e) {
+                throw new IllegalArgumentException(configKey + " must have a valid HTTP(S) authority", e);
+            }
             return;
         }
-        if (!tlsRequired && ("http".equalsIgnoreCase(scheme) || fileAllowed && "file".equalsIgnoreCase(scheme))) {
+        if (!tlsRequired && fileAllowed && "file".equalsIgnoreCase(scheme)) {
             return;
         }
         throw new IllegalArgumentException(

@@ -2135,6 +2135,25 @@ class OidcProviderConfigTest {
     }
 
     @Test
+    void authorizationCodeFlowRejectsTokenEndpointWithoutValidHostDuringConfiguration() {
+        for (String value : List.of("https:/token", "https://:443/token", "http:/token")) {
+            IllegalArgumentException thrown = assertThrows(IllegalArgumentException.class, () -> OidcTenantConfig.builder()
+                    .issuer(ISSUER.toString())
+                    .clientId("client-id")
+                    .clientSecret("client-secret")
+                    .endpoints(it -> it.authorizationEndpointUri(AUTHORIZATION_ENDPOINT_URI)
+                            .tokenEndpointUri(URI.create(value))
+                            .tlsRequired(false))
+                    .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI))
+                    .cookies(it -> it.password("test-cookie-password"))
+                    .buildPrototype(), value);
+
+            assertThat(value, thrown.getMessage(),
+                       containsString("token-endpoint-uri must have a valid HTTP(S) authority"));
+        }
+    }
+
+    @Test
     void endpointTlsRequirementCanBeDisabledForTokenEndpoint() {
         OidcTenantConfig tenant = OidcTenantConfig.builder()
                 .issuer(ISSUER.toString())

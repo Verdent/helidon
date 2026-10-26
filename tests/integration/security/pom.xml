@@ -40,4 +40,13 @@
         <module>oidc-next-keycloak</module>
         <module>oidc-next-providers</module>
     </modules>
+
+    <profiles>
+        <profile>
+            <id>oidc-conformance</id>
+            <modules>
+                <module>oidc-next-conformance</module>
+            </modules>
+        </profile>
+    </profiles>
 </project>

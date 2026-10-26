@@ -1,0 +1,37 @@
+# Prebuilt OpenID Foundation conformance-suite images (no image build or suite source checkout).
+# The release tag must change only after the pinned RP plans are rerun and reviewed.
+services:
+  mongodb:
+    image: ${OIDF_MONGODB_IMAGE:-mongo:6.0.13}
+    tmpfs:
+      - /data/db
+  server:
+    image: registry.gitlab.com/openid/conformance-suite:release-v5.3.3
+    environment:
+      BASE_URL: https://localhost.emobix.co.uk:8443
+      BASE_MTLS_URL: https://localhost.emobix.co.uk:8444
+      MONGODB_HOST: mongodb
+      SPRING_PROFILES_ACTIVE: dev
+      # The suite's dev profile requires nonempty social-login registrations even though this fixture uses neither.
+      OIDC_GOOGLE_CLIENTID: google-client
+      OIDC_GOOGLE_SECRET: google-secret
+      OIDC_GITLAB_CLIENTID: gitlab-client
+      OIDC_GITLAB_SECRET: gitlab-secret
+    extra_hosts:
+      - host.docker.internal:host-gateway
+    depends_on:
+      - mongodb
+  nginx:
+    image: registry.gitlab.com/openid/conformance-suite/nginx:release-v5.3.3
+    ports:
+      - "127.0.0.1:8443:8443"
+    volumes:
+      - ${OIDF_CERT}:/etc/ssl/certs/nginx-selfsigned.crt:ro
+      - ${OIDF_KEY}:/etc/ssl/private/nginx-selfsigned.key:ro
+    networks:
+      default:
+        aliases:
+          # The suite resolves its own public hostname; let its container reach nginx instead of loopback.
+          - localhost.emobix.co.uk
+    depends_on:
+      - server

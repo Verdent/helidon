@@ -77,7 +77,8 @@ final class OidcBackChannelLogoutHandler {
             response.status(Status.BAD_REQUEST_400).send();
             return;
         }
-        if (!matchesRegisteredQuery(registered.uri(), request.requestedUri().toUri())) {
+        // Preserve repeated query values; reconstructing a URI from the request can fold them into one value.
+        if (!matchesRegisteredQuery(registered.uri(), request.query())) {
             response.status(Status.BAD_REQUEST_400).send();
             return;
         }
@@ -160,9 +161,8 @@ final class OidcBackChannelLogoutHandler {
         return Optional.ofNullable(token).filter(value -> !value.isBlank());
     }
 
-    private boolean matchesRegisteredQuery(URI registered, URI incoming) {
+    private boolean matchesRegisteredQuery(URI registered, UriQuery actual) {
         UriQuery expected = UriQuery.create(registered);
-        UriQuery actual = UriQuery.create(incoming);
         return expected.names()
                 .stream()
                 .allMatch(name -> expected.all(name).equals(actual.all(name, java.util.List::of)));

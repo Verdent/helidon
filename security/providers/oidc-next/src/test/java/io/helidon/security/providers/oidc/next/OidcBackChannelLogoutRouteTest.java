@@ -20,9 +20,11 @@ import java.net.URI;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 
@@ -39,6 +41,7 @@ import io.helidon.security.jwt.Jwt;
 import io.helidon.security.jwt.SignedJwt;
 import io.helidon.security.jwt.jwk.JwkKeys;
 import io.helidon.security.providers.oidc.next.spi.OidcBackChannelLogoutStore;
+import io.helidon.webclient.api.HttpClientRequest;
 import io.helidon.webclient.api.HttpClientResponse;
 import io.helidon.webclient.api.WebClient;
 import io.helidon.webserver.WebServer;
@@ -124,6 +127,167 @@ class OidcBackChannelLogoutRouteTest {
                     assertThat(response.entity().hasEntity(), is(false));
                 }
                 assertThat(authenticate(provider, cookie).status(), is(SecurityResponse.SecurityStatus.SUCCESS));
+            } finally {
+                server.stop();
+                client.closeResource();
+            }
+        }
+    }
+
+    @Test
+    void malformedLogoutPostsDoNotRevokeAnExistingSession() {
+        TestStore store = new TestStore();
+        OidcTenantConfig tenant = withStore(store);
+        try (OidcProvider provider = provider(tenant)) {
+            SetCookie cookie = localAuthenticationCookie(provider, tenant, SID);
+            WebClient client = WebClient.builder().build();
+            WebServer server = logoutServer(provider);
+            try {
+                URI uri = URI.create("http://127.0.0.1:" + server.port() + "/oidc/backchannel");
+                String token = logoutToken(_ -> { });
+                List<Map.Entry<String, String>> malformedForms = List.of(
+                        Map.entry("empty body", ""),
+                        Map.entry("no token", "ignored=ok"),
+                        Map.entry("bare field", "logout_token"),
+                        Map.entry("empty token", "logout_token="),
+                        Map.entry("whitespace token", "logout_token=+++"),
+                        Map.entry("duplicate same token", "logout_token=" + token + "&logout_token=" + token),
+                        Map.entry("duplicate different token", "logout_token=" + token + "&logout_token=invalid"),
+                        Map.entry("invalid percent in name", "logout%ZZ_token=" + token),
+                        Map.entry("invalid percent in value", "logout_token=%ZZ"));
+                for (Map.Entry<String, String> testCase : malformedForms) {
+                    try (HttpClientResponse response = postRawLogout(client, uri,
+                                                                      "application/x-www-form-urlencoded",
+                                                                      testCase.getValue())) {
+                        assertBadLogoutResponse(response, testCase.getKey());
+                    }
+                    assertThat(testCase.getKey(), store.revocations.get(), is(0));
+                    assertThat(testCase.getKey(), authenticate(provider, cookie).status(),
+                               is(SecurityResponse.SecurityStatus.SUCCESS));
+                }
+
+                String validForm = "logout_token=" + token;
+                for (String wrongMediaType : List.of("application/json", "text/plain")) {
+                    try (HttpClientResponse response = postRawLogout(client, uri, wrongMediaType, validForm)) {
+                        assertBadLogoutResponse(response, wrongMediaType);
+                    }
+                    assertThat(store.revocations.get(), is(0));
+                    assertThat(authenticate(provider, cookie).status(), is(SecurityResponse.SecurityStatus.SUCCESS));
+                }
+
+                String oversizedForm = validForm + "&ignored=" + "x".repeat(1024 * 1024);
+                try (HttpClientResponse response = postRawLogout(client, uri,
+                                                                  "application/x-www-form-urlencoded",
+                                                                  oversizedForm)) {
+                    assertBadLogoutResponse(response, "oversized form");
+                }
+                assertThat(store.revocations.get(), is(0));
+                assertThat(authenticate(provider, cookie).status(), is(SecurityResponse.SecurityStatus.SUCCESS));
+
+                // Unknown form fields must be ignored; an invalid request must not consume the valid Logout Token.
+                try (HttpClientResponse response = postRawLogout(client, uri,
+                                                                  "application/x-www-form-urlencoded; charset=UTF-8",
+                                                                  "ignored=ok&" + validForm)) {
+                    assertThat(response.status(), is(Status.OK_200));
+                    assertThat(response.headers().first(HeaderNames.CACHE_CONTROL).orElse(""), is("no-store"));
+                }
+                assertThat(store.revocations.get(), is(1));
+                assertThat(authenticate(provider, cookie).status(), is(SecurityResponse.SecurityStatus.FAILURE_FINISH));
+            } finally {
+                server.stop();
+                client.closeResource();
+            }
+        }
+    }
+
+    @Test
+    void fixedRegisteredQueryIsRequiredAndAdditionalQueryParametersAreAllowed() {
+        TestStore store = new TestStore();
+        OidcTenantConfig tenant = OidcTenantConfig.builder(withStore(store))
+                .logout(logout -> logout.backChannel(backChannel -> backChannel
+                        .uri(URI.create("http://127.0.0.1/oidc/backchannel?tenant=default&tag=one&tag=two"))
+                        .store(store)))
+                .buildPrototype();
+        try (OidcProvider provider = provider(tenant)) {
+            SetCookie cookie = localAuthenticationCookie(provider, tenant, SID);
+            WebClient client = WebClient.builder().build();
+            WebServer server = logoutServer(provider);
+            try {
+                String endpoint = "http://127.0.0.1:" + server.port() + "/oidc/backchannel";
+                String form = "logout_token=" + logoutToken(_ -> { });
+                List<Map.Entry<String, String>> invalidQueries = List.of(
+                        Map.entry("missing query", ""),
+                        Map.entry("wrong tenant", "?tenant=other&tag=one&tag=two"),
+                        Map.entry("duplicated tenant", "?tenant=default&tenant=default&tag=one&tag=two"),
+                        Map.entry("missing registered value", "?tenant=default&tag=one"),
+                        Map.entry("changed registered value", "?tenant=default&tag=one&tag=other"));
+                for (Map.Entry<String, String> testCase : invalidQueries) {
+                    try (HttpClientResponse response = postRawLogout(client,
+                                                                      URI.create(endpoint + testCase.getValue()),
+                                                                      "application/x-www-form-urlencoded", form)) {
+                        assertBadLogoutResponse(response, testCase.getKey());
+                    }
+                    assertThat(testCase.getKey(), store.revocations.get(), is(0));
+                    assertThat(testCase.getKey(), authenticate(provider, cookie).status(),
+                               is(SecurityResponse.SecurityStatus.SUCCESS));
+                }
+
+                // The registered query must survive if the OP appends its own query parameter.
+                URI validUri = URI.create(endpoint + "?tenant=default&tag=one&tag=two&op=notice");
+                try (HttpClientResponse response = postRawLogout(client, validUri,
+                                                                  "application/x-www-form-urlencoded", form)) {
+                    assertThat(response.status(), is(Status.OK_200));
+                    assertThat(response.headers().first(HeaderNames.CACHE_CONTROL).orElse(""), is("no-store"));
+                }
+                assertThat(store.revocations.get(), is(1));
+                assertThat(authenticate(provider, cookie).status(), is(SecurityResponse.SecurityStatus.FAILURE_FINISH));
+            } finally {
+                server.stop();
+                client.closeResource();
+            }
+        }
+    }
+
+    @Test
+    void exhaustedLogoutWorkCapacityRejectsAndLaterAcceptsTheSameToken() {
+        TestStore store = new TestStore();
+        OidcTenantConfig tenant = OidcTenantConfig.builder(withStore(store))
+                .logout(logout -> logout.backChannel(backChannel -> backChannel
+                        .uri(URI.create("http://127.0.0.1/oidc/backchannel"))
+                        .store(store)
+                        .remoteWork(remoteWork -> remoteWork.maxConcurrent(1).maxQueued(0))))
+                .buildPrototype();
+        try (OidcProvider provider = provider(tenant)) {
+            SetCookie cookie = localAuthenticationCookie(provider, tenant, SID);
+            WebClient client = WebClient.builder().build();
+            WebServer server = logoutServer(provider);
+            try {
+                URI uri = URI.create("http://127.0.0.1:" + server.port() + "/oidc/backchannel");
+                String token = logoutToken(_ -> { });
+                OidcRemoteWorkLimiter limiter = provider.tenantRuntimeRegistry()
+                        .logoutWorkLimiter("default").orElseThrow();
+                // Occupy the exact permit that the route must acquire, without relying on thread timing or sleeps.
+                try (OidcRemoteWorkLimiter.Permit _ = limiter.acquireActive().orElseThrow()) {
+                    try (HttpClientResponse response = postRawLogout(client, uri,
+                                                                      "application/x-www-form-urlencoded",
+                                                                      "logout_token=" + token)) {
+                        assertBadLogoutResponse(response, "capacity exhausted");
+                    }
+                    assertThat(limiter.activeCount(), is(1));
+                    assertThat(store.revocations.get(), is(0));
+                    assertThat(authenticate(provider, cookie).status(), is(SecurityResponse.SecurityStatus.SUCCESS));
+                }
+
+                assertThat(limiter.activeCount(), is(0));
+                try (HttpClientResponse response = postRawLogout(client, uri,
+                                                                  "application/x-www-form-urlencoded",
+                                                                  "logout_token=" + token)) {
+                    assertThat(response.status(), is(Status.OK_200));
+                    assertThat(response.headers().first(HeaderNames.CACHE_CONTROL).orElse(""), is("no-store"));
+                }
+                assertThat(limiter.activeCount(), is(0));
+                assertThat(store.revocations.get(), is(1));
+                assertThat(authenticate(provider, cookie).status(), is(SecurityResponse.SecurityStatus.FAILURE_FINISH));
             } finally {
                 server.stop();
                 client.closeResource();
@@ -283,6 +447,27 @@ class OidcBackChannelLogoutRouteTest {
         }
     }
 
+    private static HttpClientResponse postRawLogout(WebClient client, URI uri, String contentType, String body) {
+        HttpClientRequest request = client.post().uri(uri);
+        if (contentType != null) {
+            request.header(HeaderNames.CONTENT_TYPE, contentType);
+        }
+        return request.submit(body);
+    }
+
+    private static void assertBadLogoutResponse(HttpClientResponse response, String caseName) {
+        assertThat(caseName, response.status(), is(Status.BAD_REQUEST_400));
+        assertThat(caseName, response.headers().first(HeaderNames.CACHE_CONTROL).orElse(""), is("no-store"));
+        assertThat(caseName, response.headers().contains(HeaderNames.SET_COOKIE), is(false));
+        assertThat(caseName, response.entity().hasEntity(), is(false));
+    }
+
+    private static WebServer logoutServer(OidcProvider provider) {
+        HttpRouting.Builder routing = HttpRouting.builder();
+        OidcFeature.create(provider).setup(routing);
+        return WebServer.builder().host("127.0.0.1").port(0).addRouting(routing).build().start();
+    }
+
     private static SetCookie localAuthenticationCookie(OidcProvider provider, OidcTenantConfig tenant, String sid) {
         return localAuthenticationCookie(provider, tenant, sid, Instant.now().truncatedTo(ChronoUnit.SECONDS));
     }
@@ -365,6 +550,7 @@ class OidcBackChannelLogoutRouteTest {
     private static final class TestStore implements OidcBackChannelLogoutStore {
         private final OidcInMemoryLogoutStore delegate = new OidcInMemoryLogoutStore();
         private final AtomicBoolean unavailable = new AtomicBoolean();
+        private final AtomicInteger revocations = new AtomicInteger();
         private final AtomicReference<Instant> retainUntil = new AtomicReference<>();
 
         @Override
@@ -389,6 +575,7 @@ class OidcBackChannelLogoutRouteTest {
         public void revoke(LogoutEvent event, Instant retainUntil) {
             requireAvailable();
             delegate.revoke(event, retainUntil);
+            revocations.incrementAndGet();
             this.retainUntil.set(retainUntil);
         }
 

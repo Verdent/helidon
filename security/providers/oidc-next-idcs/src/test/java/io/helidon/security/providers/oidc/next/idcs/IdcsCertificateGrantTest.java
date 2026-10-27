@@ -17,6 +17,7 @@
 package io.helidon.security.providers.oidc.next.idcs;
 
 import java.net.URI;
+import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import io.helidon.common.configurable.Resource;
@@ -56,6 +57,8 @@ class IdcsCertificateGrantTest {
     private static URI domainUri;
     private static Keys tlsKeys;
     private static volatile boolean redirectTokenEndpoint;
+    private static volatile Status tokenResponseStatus;
+    private static volatile String tokenResponseBody;
 
     @BeforeAll
     static void start() {
@@ -81,11 +84,9 @@ class IdcsCertificateGrantTest {
             assertThat(form.first("grant_type").orElseThrow(), is("tls_client_auth"));
             assertThat(form.first("client_id").orElseThrow(), is("client"));
             assertThat(form.first("scope").orElseThrow(), is(JWKS_SCOPE));
-            response.header(HeaderValues.CONTENT_TYPE_JSON)
-                    .send(JsonObject.builder()
-                                  .set("access_token", "idcs-key-reader")
-                                  .set("token_type", "Bearer")
-                                  .build().toString());
+            response.status(tokenResponseStatus)
+                    .header(HeaderValues.CONTENT_TYPE_JSON)
+                    .send(tokenResponseBody);
         });
         routing.post("/wrong-target", (_, response) -> {
             REDIRECT_TARGET_REQUESTS.incrementAndGet();
@@ -107,6 +108,11 @@ class IdcsCertificateGrantTest {
         TOKEN_REQUESTS.set(0);
         REDIRECT_TARGET_REQUESTS.set(0);
         redirectTokenEndpoint = false;
+        tokenResponseStatus = Status.OK_200;
+        tokenResponseBody = JsonObject.builder()
+                .set("access_token", "idcs-key-reader")
+                .set("token_type", "Bearer")
+                .build().toString();
     }
 
     @Test
@@ -150,6 +156,87 @@ class IdcsCertificateGrantTest {
                                                                  _ -> "unused"));
             assertThat(failure.getMessage(), containsString("status=307"));
             assertThat(TOKEN_REQUESTS.get(), is(1));
+            assertThat(REDIRECT_TARGET_REQUESTS.get(), is(0));
+        } finally {
+            webClient.closeResource();
+        }
+    }
+
+    @Test
+    void certificateGrantRejectsTokenResponseWithoutTokenType() {
+        tokenResponseBody = JsonObject.builder()
+                .set("access_token", "idcs-key-reader")
+                .build().toString();
+        IdcsTenantAdapter adapter = IdcsTenantAdapter.builder()
+                .domainUri(domainUri)
+                .jwkSetGrant(IdcsTenantAdapter.JwkSetGrant.TLS_CLIENT_AUTH)
+                .build();
+        OidcTenantConfig tenant = tenant(adapter);
+        WebClient webClient = WebClient.create(tenant.webClient());
+        try {
+            IllegalStateException failure = assertThrows(IllegalStateException.class,
+                                                         () -> adapter.jwkSetAccessToken(
+                                                                 tenant,
+                                                                 domainUri.resolve("/admin/v1/SigningCert/jwk"),
+                                                                 webClient,
+                                                                 _ -> "unused"));
+            assertThat(failure.getMessage(), containsString("Bearer"));
+            assertThat(TOKEN_REQUESTS.get(), is(1));
+            assertThat(REDIRECT_TARGET_REQUESTS.get(), is(0));
+        } finally {
+            webClient.closeResource();
+        }
+    }
+
+    @Test
+    void certificateGrantRejectsInvalidResponsesAndRecovers() {
+        IdcsTenantAdapter adapter = IdcsTenantAdapter.builder()
+                .domainUri(domainUri)
+                .jwkSetGrant(IdcsTenantAdapter.JwkSetGrant.TLS_CLIENT_AUTH)
+                .build();
+        OidcTenantConfig tenant = tenant(adapter);
+        WebClient webClient = WebClient.create(tenant.webClient());
+        URI jwkSetUri = domainUri.resolve("/admin/v1/SigningCert/jwk");
+        try {
+            List<String> invalidResponses = List.of(
+                    JsonObject.builder().set("access_token", "idcs-key-reader").set("token_type", "")
+                            .build().toString(),
+                    JsonObject.builder().set("access_token", "idcs-key-reader").set("token_type", "MAC")
+                            .build().toString(),
+                    JsonObject.builder().set("access_token", "idcs-key-reader").set("token_type", 42)
+                            .build().toString(),
+                    JsonObject.builder().set("token_type", "Bearer").build().toString(),
+                    JsonObject.builder().set("access_token", " ").set("token_type", "Bearer").build().toString(),
+                    "{not-json");
+            int attempts = 0;
+            for (String invalidResponse : invalidResponses) {
+                tokenResponseBody = invalidResponse;
+                assertThrows(RuntimeException.class,
+                             () -> adapter.jwkSetAccessToken(tenant, jwkSetUri, webClient, _ -> "unused"));
+                attempts++;
+                assertThat(TOKEN_REQUESTS.get(), is(attempts));
+            }
+
+            for (Status errorStatus : List.of(Status.BAD_REQUEST_400, Status.INTERNAL_SERVER_ERROR_500)) {
+                tokenResponseStatus = errorStatus;
+                IllegalStateException failure = assertThrows(IllegalStateException.class,
+                                                             () -> adapter.jwkSetAccessToken(tenant,
+                                                                                             jwkSetUri,
+                                                                                             webClient,
+                                                                                             _ -> "unused"));
+                assertThat(failure.getMessage(), containsString("status=" + errorStatus.code()));
+                attempts++;
+                assertThat(TOKEN_REQUESTS.get(), is(attempts));
+            }
+
+            tokenResponseStatus = Status.OK_200;
+            tokenResponseBody = JsonObject.builder()
+                    .set("access_token", "idcs-key-reader")
+                    .set("token_type", "bEaReR")
+                    .build().toString();
+            assertThat(adapter.jwkSetAccessToken(tenant, jwkSetUri, webClient, _ -> "unused").orElseThrow(),
+                       is("idcs-key-reader"));
+            assertThat(TOKEN_REQUESTS.get(), is(attempts + 1));
             assertThat(REDIRECT_TARGET_REQUESTS.get(), is(0));
         } finally {
             webClient.closeResource();

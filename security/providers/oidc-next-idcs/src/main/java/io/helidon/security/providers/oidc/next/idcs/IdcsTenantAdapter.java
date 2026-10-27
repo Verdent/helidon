@@ -207,11 +207,13 @@ public final class IdcsTenantAdapter implements OidcTenantAdapter {
                                                         + response.status().code());
             }
             JsonObject json = response.as(JsonObject.class);
-            json.stringValue("token_type")
-                    .filter(type -> !"Bearer".equalsIgnoreCase(type))
-                    .ifPresent(_ -> {
-                        throw new IllegalStateException("IDCS signing-key token must use the Bearer type");
-                    });
+            /*
+             * RFC 6749, Sections 5.1 and 7.1: token_type is required to use a successful token response.
+             * Missing and unsupported types cannot be assumed to represent Bearer tokens.
+             */
+            if (json.stringValue("token_type").filter("Bearer"::equalsIgnoreCase).isEmpty()) {
+                throw new IllegalStateException("IDCS signing-key token must use the Bearer type");
+            }
             return Optional.of(json.stringValue("access_token")
                                        .filter(value -> !value.isBlank())
                                        .orElseThrow(() -> new IllegalStateException("IDCS signing-key token is missing")));

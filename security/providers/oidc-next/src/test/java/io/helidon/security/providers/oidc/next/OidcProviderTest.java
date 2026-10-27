@@ -38,6 +38,7 @@ import io.helidon.common.configurable.ResourceConfig;
 import io.helidon.common.uri.UriQuery;
 import io.helidon.config.Config;
 import io.helidon.http.SetCookie;
+import io.helidon.http.Status;
 import io.helidon.json.JsonObject;
 import io.helidon.json.JsonString;
 import io.helidon.json.JsonValue;
@@ -209,6 +210,91 @@ class OidcProviderTest {
         assertThat(response.description().orElse(""), is("Bearer Token is invalid"));
         assertThat(response.responseHeaders().get("WWW-Authenticate").getFirst()
                            .startsWith("Bearer realm=\"helidon\", "), is(true));
+    }
+
+    @Test
+    void conflictingBrowserAndBearerCredentialsFollowTheEndpointPolicy() {
+        OidcTenantConfig tenant = OidcTenantConfig.builder(authorizationCodeAndProtectedResourceTenant())
+                .protectedResource(resource -> resource.tokenValidation(validation -> validation
+                        .method(OidcTokenValidationMethod.JWT)
+                        .audience("api://default")
+                        .verificationJwk(ResourceConfig.builder()
+                                .resourcePath("oidc-next-verify-public-jwk.json")
+                                .buildPrototype())))
+                .buildPrototype();
+        Instant now = Instant.now();
+        SetCookie cookie = localAuthenticationCookie(tenant, "default", now, now.plusSeconds(3600));
+        String bearerToken = SignedJwt.sign(Jwt.builder()
+                .type("at+jwt")
+                .issuer(ISSUER.toString())
+                .subject("api-user-id")
+                .preferredUsername("api-user")
+                .addAudience("api://default")
+                .addPayloadClaim("client_id", "api-client")
+                .algorithm("RS256")
+                .keyId("verify-rsa")
+                .issueTime(now)
+                .expirationTime(now.plusSeconds(3600))
+                .jwtId("credential-precedence-test")
+                .build(), signKeys.forKeyId("sign-rsa").orElseThrow()).tokenContent();
+        SecurityEnvironment withCookie = SecurityEnvironment.builder()
+                .targetUri(ORIGINAL_URI)
+                .header("Cookie", cookie.name() + "=" + cookie.value())
+                .build();
+        OidcEndpointPolicy bothAccepted = OidcEndpointPolicy.protectedResourceAndAuthorizationCodeFlow();
+        OidcEndpointPolicyConfig cookieOnly = OidcEndpointPolicyConfig.builder()
+                .acceptedCredentials(List.of(OidcEndpointCredential.AUTHENTICATION_COOKIE))
+                .authenticationFailureResponse(OidcAuthenticationFailureResponse.UNAUTHORIZED)
+                .buildPrototype();
+
+        try (OidcProvider provider = provider(tenant)) {
+            AuthenticationResponse withoutBearer = provider.authenticate(request(bothAccepted, withCookie));
+            assertThat(withoutBearer.status(), is(SecurityResponse.SecurityStatus.SUCCESS));
+            assertThat(withoutBearer.user().orElseThrow().principal().id(), is(issuerSubjectPrincipalId()));
+
+            SecurityEnvironment validBearer = withCookie.derive()
+                    .header("Authorization", "Bearer " + bearerToken)
+                    .build();
+            AuthenticationResponse bearerResult = provider.authenticate(request(bothAccepted, validBearer));
+            assertThat("Bearer response: " + bearerResult.description().orElse("<none>")
+                               + " (HTTP " + bearerResult.statusCode().orElse(-1) + ")",
+                       bearerResult.status(), is(SecurityResponse.SecurityStatus.SUCCESS));
+            Subject bearerSubject = bearerResult.user().orElseThrow();
+            assertThat(bearerSubject.principal().id(),
+                       is(OidcTestIdentities.issuerSubject(ISSUER.toString(), "api-user-id")));
+            assertThat(bearerSubject.principal().getName(), is("api-user"));
+            assertThat(bearerSubject.publicCredential(TokenCredential.class).orElseThrow().token(), is(bearerToken));
+
+            for (Map.Entry<String, Status> invalidBearer : List.of(
+                    Map.entry("Bearer invalid", Status.UNAUTHORIZED_401),
+                    Map.entry("Bearer ", Status.BAD_REQUEST_400))) {
+                SecurityEnvironment environment = withCookie.derive()
+                        .header("Authorization", invalidBearer.getKey())
+                        .build();
+                AuthenticationResponse rejected = provider.authenticate(request(bothAccepted, environment));
+                assertThat(invalidBearer.getKey(), rejected.status(), is(SecurityResponse.SecurityStatus.FAILURE));
+                assertThat(invalidBearer.getKey(), rejected.statusCode().orElseThrow(),
+                           is(invalidBearer.getValue().code()));
+                assertThat(invalidBearer.getKey(), rejected.user().isEmpty(), is(true));
+                assertThat(invalidBearer.getKey(), rejected.responseHeaders().get("WWW-Authenticate").getFirst(),
+                           containsString(invalidBearer.getValue() == Status.BAD_REQUEST_400
+                                                  ? "error=\"invalid_request\"" : "error=\"invalid_token\""));
+            }
+
+            // When the endpoint accepts only browser sessions, even malformed Bearer headers are not credentials.
+            for (String authorization : List.of("Bearer " + bearerToken, "Bearer invalid", "Bearer ")) {
+                SecurityEnvironment environment = withCookie.derive()
+                        .header("Authorization", authorization)
+                        .build();
+                AuthenticationResponse browserResult = provider.authenticate(
+                        requestWithEndpointPolicyConfig(cookieOnly, environment));
+                assertThat(authorization, browserResult.status(), is(SecurityResponse.SecurityStatus.SUCCESS));
+                Subject browserSubject = browserResult.user().orElseThrow();
+                assertThat(authorization, browserSubject.principal().id(), is(issuerSubjectPrincipalId()));
+                assertThat(authorization, browserSubject.publicCredential(TokenCredential.class)
+                                   .orElseThrow().token(), is("access-token"));
+            }
+        }
     }
 
     @Test

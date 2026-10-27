@@ -48,7 +48,13 @@ import io.helidon.common.configurable.ResourceConfig;
 import io.helidon.http.HeaderName;
 import io.helidon.http.HeaderNames;
 import io.helidon.http.HeaderValues;
+import io.helidon.json.JsonArray;
+import io.helidon.json.JsonBoolean;
+import io.helidon.json.JsonNull;
+import io.helidon.json.JsonNumber;
 import io.helidon.json.JsonObject;
+import io.helidon.json.JsonString;
+import io.helidon.json.JsonValue;
 import io.helidon.security.AuthenticationResponse;
 import io.helidon.security.Grant;
 import io.helidon.security.Role;
@@ -510,6 +516,42 @@ class OidcJwtAccessTokenValidationTest {
                                                        OidcTestCertificates.certificate("client-certificate"));
 
         assertInvalidToken(response, "Bearer Token JWT claims are invalid");
+    }
+
+    @Test
+    void presentNonObjectConfirmationClaimIsRejectedInEveryMode() {
+        List<JsonValue> malformedClaims = List.of(JsonString.create("not-an-object"),
+                                                  JsonNull.instance(),
+                                                  JsonArray.createStrings(List.of("not-an-object")),
+                                                  JsonBoolean.create(true),
+                                                  JsonNumber.create(1));
+        for (OidcCertificateBoundAccessTokenMode mode : OidcCertificateBoundAccessTokenMode.values()) {
+            OidcProvider verifier = provider(mode);
+            for (JsonValue malformedClaim : malformedClaims) {
+                String token = signedToken(it -> it.addPayloadClaim("cnf", malformedClaim));
+
+                AuthenticationResponse response = authenticate(verifier, token);
+
+                assertThat("cnf type=" + malformedClaim.type() + ", mode=" + mode,
+                           response.status(), is(SecurityResponse.SecurityStatus.FAILURE));
+                assertInvalidToken(response, "Bearer Token JWT claims are invalid");
+                assertThat(response.user().isEmpty(), is(true));
+            }
+        }
+    }
+
+    @Test
+    void unrecognizedObjectConfirmationMemberIsIgnoredWhenBindingIsOptional() {
+        String token = signedToken(it -> it.addPayloadClaim("cnf", JsonObject.builder()
+                .set("future-method", "key-reference")
+                .build()));
+
+        for (OidcCertificateBoundAccessTokenMode mode : List.of(OidcCertificateBoundAccessTokenMode.DISABLED,
+                                                                 OidcCertificateBoundAccessTokenMode.IF_PRESENT)) {
+            assertThat(authenticate(provider(mode), token).status(), is(SecurityResponse.SecurityStatus.SUCCESS));
+        }
+        assertInvalidToken(authenticate(provider(OidcCertificateBoundAccessTokenMode.REQUIRED), token),
+                           "Bearer Token JWT claims are invalid");
     }
 
     @Test

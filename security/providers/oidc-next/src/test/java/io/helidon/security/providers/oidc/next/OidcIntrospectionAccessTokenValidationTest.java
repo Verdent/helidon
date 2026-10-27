@@ -49,7 +49,13 @@ import io.helidon.common.pki.Keys;
 import io.helidon.http.HeaderName;
 import io.helidon.http.HeaderNames;
 import io.helidon.http.HeaderValues;
+import io.helidon.json.JsonArray;
+import io.helidon.json.JsonBoolean;
+import io.helidon.json.JsonNull;
+import io.helidon.json.JsonNumber;
 import io.helidon.json.JsonObject;
+import io.helidon.json.JsonString;
+import io.helidon.json.JsonValue;
 import io.helidon.security.AuthenticationResponse;
 import io.helidon.security.Grant;
 import io.helidon.security.Role;
@@ -996,6 +1002,42 @@ class OidcIntrospectionAccessTokenValidationTest {
                                                        OidcTestCertificates.certificate("client-certificate"));
 
         assertInvalidToken(response, "Bearer Token introspection claims are invalid");
+    }
+
+    @Test
+    void presentNonObjectConfirmationClaimIsRejectedInEveryMode() {
+        List<JsonValue> malformedClaims = List.of(JsonString.create("not-an-object"),
+                                                  JsonNull.instance(),
+                                                  JsonArray.createStrings(List.of("not-an-object")),
+                                                  JsonBoolean.create(true),
+                                                  JsonNumber.create(1));
+        for (OidcCertificateBoundAccessTokenMode mode : OidcCertificateBoundAccessTokenMode.values()) {
+            OidcProvider verifier = provider(mode);
+            for (JsonValue malformedClaim : malformedClaims) {
+                responseBody = validResponse(it -> it.set("cnf", malformedClaim)).toString();
+
+                AuthenticationResponse response = authenticate(verifier, OPAQUE_TOKEN);
+
+                assertThat("cnf type=" + malformedClaim.type() + ", mode=" + mode,
+                           response.status(), is(SecurityResponse.SecurityStatus.FAILURE));
+                assertInvalidToken(response, "Bearer Token introspection claims are invalid");
+                assertThat(response.user().isEmpty(), is(true));
+            }
+        }
+    }
+
+    @Test
+    void unrecognizedObjectConfirmationMemberIsIgnoredWhenBindingIsOptional() {
+        responseBody = validResponse(it -> it.set("cnf", cnf -> cnf.set("future-method", "key-reference")))
+                .toString();
+
+        for (OidcCertificateBoundAccessTokenMode mode : List.of(OidcCertificateBoundAccessTokenMode.DISABLED,
+                                                                 OidcCertificateBoundAccessTokenMode.IF_PRESENT)) {
+            assertThat(authenticate(provider(mode), OPAQUE_TOKEN).status(),
+                       is(SecurityResponse.SecurityStatus.SUCCESS));
+        }
+        assertInvalidToken(authenticate(provider(OidcCertificateBoundAccessTokenMode.REQUIRED), OPAQUE_TOKEN),
+                           "Bearer Token introspection claims are invalid");
     }
 
     @Test

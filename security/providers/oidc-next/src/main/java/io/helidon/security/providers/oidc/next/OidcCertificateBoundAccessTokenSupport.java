@@ -37,9 +37,15 @@ final class OidcCertificateBoundAccessTokenSupport {
 
     static OidcValidationResult<Boolean> validate(Optional<JsonValue> confirmationClaim,
                                                   OidcAccessTokenValidationRequest request) {
-        Optional<JsonObject> confirmation = confirmationClaim
-                .filter(value -> value.type() == JsonValueType.OBJECT)
-                .map(value -> value.asObject());
+        /*
+         * RFC 7800, Section 3 defines cnf as an object. RFC 8705, Section 9.4 gives the introspection cnf member
+         * the same format. A present malformed value must not become indistinguishable from an absent claim when
+         * certificate binding is optional.
+         */
+        if (confirmationClaim.filter(value -> value.type() != JsonValueType.OBJECT).isPresent()) {
+            return OidcValidationResult.failure("Bearer Token confirmation claim is invalid");
+        }
+        Optional<JsonObject> confirmation = confirmationClaim.map(JsonValue::asObject);
         if (confirmation.flatMap(value -> value.value(DPOP_JWK_THUMBPRINT_CONFIRMATION)).isPresent()) {
             /*
              * Spec: RFC 9449, 7.2 Checking DPoP Proofs

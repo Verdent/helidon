@@ -94,6 +94,13 @@ final class OidcUserInfoJwtValidator {
         if (!claimErrors.isValid()) {
             return OidcValidationResult.failure("UserInfo JWT claims are invalid");
         }
+        // RFC 7519, 4.1.4: when exp is present, the validation time (allowing configured skew) must be before it.
+        // The shared JWT expiration validator accepts equality; retain optional exp but reject that boundary here.
+        if (jwt.expirationTime()
+                .filter(expiration -> expiration.equals(validationTime.minus(config.clockSkew())))
+                .isPresent()) {
+            return OidcValidationResult.failure("UserInfo JWT claims are invalid");
+        }
         return OidcValidationResult.success(jwt.payloadJsonObject());
     }
 

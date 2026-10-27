@@ -1982,6 +1982,81 @@ class OidcFeatureRouteTest {
     }
 
     @Test
+    void signedUserInfoCannotReplaceIdTokenSecurityClaimsWhenStoredInCookie(URI serverUri) {
+        String rawIdToken = signedIdToken(NONCE);
+        Jwt idToken = SignedJwt.parseToken(rawIdToken).getJwt();
+        tokenEndpointResponseBody = tokenEndpointResponse(rawIdToken).toString();
+        Instant now = Instant.now();
+        userInfoEndpointContentType = "application/jwt";
+        userInfoEndpointResponseBody = signedUserInfo(SUBJECT, ISSUER.toString(), CLIENT_ID, jwt -> jwt
+                .issueTime(now.minusSeconds(120))
+                .expirationTime(now.plusSeconds(600))
+                .notBefore(now.minusSeconds(60))
+                .nonce("other-nonce")
+                .preferredUsername("userinfo-user")
+                .addUserGroup("admin")
+                .addPayloadClaim("auth_time", now.minusSeconds(3600).getEpochSecond())
+                .addPayloadClaim("acr", "spoofed-acr")
+                .addPayloadClaim("amr", List.of("spoofed-method"))
+                .addPayloadClaim("azp", "other-client")
+                .addPayloadClaim("jti", "other-id")
+                .addPayloadClaim("sid", "other-session"));
+        OidcTenantConfig tenant = tenantConfigWithUserInfo(serverUri, userInfo -> userInfo
+                .storagePolicy(OidcUserInfoStoragePolicy.ALL)
+                .jwt(jwt -> jwt.signingAlgorithm("RS256")));
+        WebServer rpServer = oidcFeatureServer(providerConfig(tenant));
+        try {
+            SetCookie stateCookie = authenticationRequestCookie(callbackUri(rpServer), tenant);
+            try (HttpClientResponse response = WebClient.builder()
+                    .baseUri(rpBaseUri(rpServer))
+                    .build()
+                    .get("/oidc/callback")
+                    .followRedirects(false)
+                    .queryParam("code", "authorization-code")
+                    .queryParam("state", STATE)
+                    .header(HeaderNames.COOKIE, stateCookie.name() + "=" + stateCookie.value())
+                    .request()) {
+                assertThat(response.status(), is(Status.SEE_OTHER_303));
+                assertThat(USER_INFO_REQUESTS.get(), is(1));
+
+                SetCookie localCookie = localAuthenticationCookie(response, tenant);
+                JsonObject stored = OidcCookieStateHandler.create("default", tenant)
+                        .decodeLocalAuthenticationResult(localCookie.value(), OidcIdTokenDecryptor.create(tenant))
+                        .orElseThrow()
+                        .userInfo()
+                        .orElseThrow();
+                assertThat(stored.stringValue("nonce").orElseThrow(), is("other-nonce"));
+                assertThat(stored.stringValue("sid").orElseThrow(), is("other-session"));
+
+                try (OidcProvider provider = OidcProvider.create(providerConfig(tenant))) {
+                    AuthenticationResponse authentication = provider.authenticate(OidcProviderTest.request(null,
+                            SecurityEnvironment.builder()
+                                    .targetUri(URI.create("https://rp.example/resource"))
+                                    .header(HeaderNames.COOKIE.defaultCase(), localCookie.name() + "=" + localCookie.value())
+                                    .build()));
+                    assertThat(authentication.status(), is(SecurityResponse.SecurityStatus.SUCCESS));
+                    Subject subject = authentication.user().orElseThrow();
+                    assertThat(subject.principal().id(), is(issuerSubjectPrincipalId()));
+                    assertThat(subject.principal().getName(), is("userinfo-user"));
+                    assertThat(subject.principal().abacAttributeRaw("nonce"), is(NONCE));
+                    assertThat(subject.principal().abacAttributeRaw("iat"),
+                               is(BigDecimal.valueOf(idToken.issueTime().orElseThrow().getEpochSecond())));
+                    assertThat(subject.principal().abacAttributeRaw("exp"),
+                               is(BigDecimal.valueOf(idToken.expirationTime().orElseThrow().getEpochSecond())));
+                    for (String absentSecurityClaim : List.of("nbf", "auth_time", "acr", "amr", "azp", "jti", "sid")) {
+                        assertThat(absentSecurityClaim,
+                                   subject.principal().abacAttributeNames().contains(absentSecurityClaim), is(false));
+                    }
+                    assertThat(subject.grants(Role.class).stream().map(Role::getName).toList(), is(List.of("admin")));
+                    assertThat(USER_INFO_REQUESTS.get(), is(1));
+                }
+            }
+        } finally {
+            rpServer.stop();
+        }
+    }
+
+    @Test
     void redirectionEndpointRouteRejectsInvalidEncryptedUserInfo(URI serverUri) throws Exception {
         userInfoEndpointContentType = "application/jwt";
         OidcTenantConfig tenant = tenantConfigWithUserInfo(serverUri,

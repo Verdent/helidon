@@ -18,10 +18,12 @@ package io.helidon.security.providers.oidc.next;
 
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.Base64;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
@@ -413,6 +415,67 @@ class OidcIdTokenValidatorTest {
         var result = validate(idToken);
 
         assertFailure(result, "ID Token claims are invalid");
+    }
+
+    @Test
+    void presentAuthorizedPartyMustBeANonblankString() {
+        for (Object value : List.of(42, true, List.of(CLIENT_ID), Map.of("client_id", CLIENT_ID), "", " \t")) {
+            String idToken = signedIdToken(it -> it.addPayloadClaim("azp", value));
+
+            assertThat("azp=" + value, validate(idToken).errorDescription().orElse(""),
+                       is("ID Token claims are invalid"));
+        }
+
+        OidcTenantConfig multiAudienceTenant = tenantConfig(it -> it.idToken(idToken -> idToken
+                .addTrustedAdditionalAudience("other-audience")));
+        String multiAudience = signedIdToken(it -> it.addAudience("other-audience")
+                .addPayloadClaim("azp", List.of(CLIENT_ID)));
+
+        assertFailure(validate(multiAudience, multiAudienceTenant), "ID Token claims are invalid");
+    }
+
+    @Test
+    void issueTimeRespectsConfiguredClockSkew() {
+        OidcTenantConfig tenant = tenantConfig(it -> it.idToken(idToken -> idToken.clockSkew(Duration.ofSeconds(30))));
+
+        assertThat(validate(signedIdToken(it -> it.issueTime(VALIDATION_TIME.plusSeconds(30))), tenant).succeeded(),
+                   is(true));
+        assertFailure(validate(signedIdToken(it -> it.issueTime(VALIDATION_TIME.plusSeconds(31))), tenant),
+                      "ID Token claims are invalid");
+    }
+
+    @Test
+    void notBeforeRespectsConfiguredClockSkew() {
+        OidcTenantConfig tenant = tenantConfig(it -> it.idToken(idToken -> idToken.clockSkew(Duration.ofSeconds(30))));
+
+        assertThat(validate(signedIdToken(it -> it.notBefore(VALIDATION_TIME.plusSeconds(30))), tenant).succeeded(),
+                   is(true));
+        assertFailure(validate(signedIdToken(it -> it.notBefore(VALIDATION_TIME.plusSeconds(31))), tenant),
+                      "ID Token claims are invalid");
+    }
+
+    @Test
+    void expirationRespectsConfiguredClockSkew() {
+        OidcTenantConfig tenant = tenantConfig(it -> it.idToken(idToken -> idToken.clockSkew(Duration.ofSeconds(30))));
+
+        assertThat(validate(signedIdToken(it -> it.issueTime(VALIDATION_TIME.minusSeconds(60))
+                           .expirationTime(VALIDATION_TIME.minusSeconds(29))), tenant).succeeded(),
+                   is(true));
+        assertFailure(validate(signedIdToken(it -> it.issueTime(VALIDATION_TIME.minusSeconds(60))
+                               .expirationTime(VALIDATION_TIME.minusSeconds(30))), tenant),
+                      "ID Token claims are invalid");
+        assertFailure(validate(signedIdToken(it -> it.issueTime(VALIDATION_TIME.minusSeconds(60))
+                               .expirationTime(VALIDATION_TIME.minusSeconds(31))), tenant),
+                      "ID Token claims are invalid");
+    }
+
+    @Test
+    void expirationAtValidationTimeIsRejectedWithZeroClockSkew() {
+        OidcTenantConfig tenant = tenantConfig(it -> it.idToken(idToken -> idToken.clockSkew(Duration.ZERO)));
+        String idToken = signedIdToken(it -> it.issueTime(VALIDATION_TIME.minusSeconds(60))
+                .expirationTime(VALIDATION_TIME));
+
+        assertFailure(validate(idToken, tenant), "ID Token claims are invalid");
     }
 
     @Test

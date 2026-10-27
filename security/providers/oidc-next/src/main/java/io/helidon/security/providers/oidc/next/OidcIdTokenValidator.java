@@ -183,6 +183,11 @@ final class OidcIdTokenValidator {
         if (!claimErrors.isValid()) {
             return OidcValidationResult.failure("ID Token claims are invalid");
         }
+        // OpenID Connect Core requires validation time to be strictly before exp (allowing configured skew).
+        // The shared JWT expiration validator accepts equality; enforce this boundary here for ID Tokens only.
+        if (jwt.expirationTime().orElseThrow().equals(validationTime.minus(idToken.clockSkew()))) {
+            return OidcValidationResult.failure("ID Token claims are invalid");
+        }
 
         return OidcValidationResult.success(new OidcValidatedIdToken(resolvedIdToken.rawToken(),
                                                                      resolvedIdToken.encrypted(),

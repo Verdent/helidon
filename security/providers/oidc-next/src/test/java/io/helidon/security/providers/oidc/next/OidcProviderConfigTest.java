@@ -1343,6 +1343,26 @@ class OidcProviderConfigTest {
     }
 
     @Test
+    void idTokenClockSkewRejectsNegativeBuilderAndConfigValues() {
+        assertThat(OidcTenantConfig.builder()
+                           .idToken(idToken -> idToken.clockSkew(Duration.ZERO))
+                           .buildPrototype()
+                           .idToken()
+                           .clockSkew(),
+                   is(Duration.ZERO));
+
+        IllegalArgumentException thrown = assertThrows(IllegalArgumentException.class,
+                                                       () -> OidcTenantConfig.builder()
+                                                               .idToken(idToken -> idToken.clockSkew(Duration.ofSeconds(-1)))
+                                                               .buildPrototype());
+        assertThat(thrown.getMessage(), containsString("id-token.clock-skew must not be negative"));
+
+        Config config = Config.just(ConfigSources.create(Map.of("id-token.clock-skew", "PT-1S")));
+        thrown = assertThrows(IllegalArgumentException.class, () -> OidcTenantConfig.create(config));
+        assertThat(thrown.getMessage(), containsString("id-token.clock-skew must not be negative"));
+    }
+
+    @Test
     void idTokenTrustedAdditionalAudiencesRejectUnsafeValues() {
         IllegalArgumentException thrown = assertThrows(IllegalArgumentException.class, () -> OidcTenantConfig.builder()
                 .issuer(ISSUER.toString())

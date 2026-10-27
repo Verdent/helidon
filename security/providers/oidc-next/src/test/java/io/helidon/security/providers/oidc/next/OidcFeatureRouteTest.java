@@ -118,7 +118,9 @@ class OidcFeatureRouteTest {
             Base64.getUrlEncoder().withoutPadding().encodeToString(new byte[32])).value();
     private static final String NONCE = "nonce";
     private static final String PKCE_VERIFIER = "pkce-verifier";
+    private static final String PRIVATE_NOTE = "test-only-sensitive-profile-claim";
     private static final AtomicInteger TOKEN_REQUESTS = new AtomicInteger();
+    private static final AtomicInteger USER_INFO_REQUESTS = new AtomicInteger();
     private static final AtomicReference<String> USER_INFO_AUTHORIZATION = new AtomicReference<>();
     private static final AtomicReference<String> TOKEN_CLIENT_ASSERTION = new AtomicReference<>();
     private static final AtomicReference<String> COLLIDING_ISSUER_METADATA = new AtomicReference<>();
@@ -160,6 +162,7 @@ class OidcFeatureRouteTest {
         routing.get("/issuer-collision-metadata", (_, response) -> response.header(HeaderValues.CONTENT_TYPE_JSON)
                 .send(COLLIDING_ISSUER_METADATA.get()));
         routing.get("/userinfo", (request, response) -> {
+            USER_INFO_REQUESTS.incrementAndGet();
             USER_INFO_AUTHORIZATION.set(request.headers().first(HeaderNames.AUTHORIZATION).orElse(""));
             response.status(userInfoEndpointStatus);
             if (userInfoEndpointStatus.family() == Status.Family.SUCCESSFUL && userInfoEndpointContentType != null) {
@@ -179,6 +182,7 @@ class OidcFeatureRouteTest {
         userInfoEndpointResponseBody = userInfoEndpointResponse(SUBJECT).build().toString();
         userInfoEndpointStatus = Status.OK_200;
         userInfoEndpointContentType = "application/json";
+        USER_INFO_REQUESTS.set(0);
         USER_INFO_AUTHORIZATION.set("");
         TOKEN_CLIENT_ASSERTION.set("");
         COLLIDING_ISSUER_METADATA.set("");
@@ -1705,6 +1709,7 @@ class OidcFeatureRouteTest {
         userInfoEndpointResponseBody = userInfoEndpointResponse(SUBJECT)
                 .set("preferred_username", "userinfo-user")
                 .set("email", "userinfo@example.org")
+                .set("private_note", PRIVATE_NOTE)
                 .setStrings("groups", List.of("admin", "auditor"))
                 .build()
                 .toString();
@@ -1741,6 +1746,7 @@ class OidcFeatureRouteTest {
                         .orElseThrow();
                 assertThat(storedUserInfo.stringValue("preferred_username").orElse(""), is("userinfo-user"));
                 assertThat(storedUserInfo.value("email").isEmpty(), is(true));
+                assertThat(storedUserInfo.value("private_note").isEmpty(), is(true));
                 assertThat(storedUserInfo.value("groups").isPresent(), is(true));
 
                 AuthenticationResponse authentication = OidcProvider.create(providerConfig(tenant))
@@ -1755,6 +1761,7 @@ class OidcFeatureRouteTest {
                 assertThat(subject.principal().id(), is(issuerSubjectPrincipalId()));
                 assertThat(subject.principal().getName(), is("userinfo-user"));
                 assertThat(subject.principal().abacAttributeRaw("email"), is(EMAIL));
+                assertThat(subject.principal().abacAttributeNames().contains("private_note"), is(false));
                 assertThat(subject.grants(Role.class).stream().map(Role::getName).toList(),
                            is(List.of("admin", "auditor")));
             }
@@ -2211,6 +2218,65 @@ class OidcFeatureRouteTest {
     }
 
     @Test
+    void redirectionEndpointRouteStoresAllUserInfoOnlyWhenConfigured(URI serverUri) {
+        JsonObject profile = JsonObject.builder().set("favorite_color", "green").build();
+        JsonObject userInfoClaims = userInfoEndpointResponse(SUBJECT)
+                .set("preferred_username", "userinfo-user")
+                .set("email", "userinfo@example.org")
+                .set("private_note", PRIVATE_NOTE)
+                .set("custom_profile", profile)
+                .setStrings("groups", List.of("admin"))
+                .build();
+        userInfoEndpointResponseBody = userInfoClaims.toString();
+        OidcTenantConfig tenant = tenantConfigWithUserInfo(serverUri,
+                                                           userInfo -> userInfo.storagePolicy(OidcUserInfoStoragePolicy.ALL));
+        WebServer rpServer = oidcFeatureServer(providerConfig(tenant));
+        try {
+            SetCookie stateCookie = authenticationRequestCookie(callbackUri(rpServer), tenant);
+            try (HttpClientResponse response = WebClient.builder()
+                    .baseUri(rpBaseUri(rpServer))
+                    .build()
+                    .get("/oidc/callback")
+                    .followRedirects(false)
+                    .queryParam("code", "authorization-code")
+                    .queryParam("state", STATE)
+                    .header(HeaderNames.COOKIE, stateCookie.name() + "=" + stateCookie.value())
+                    .request()) {
+                assertThat(response.status(), is(Status.SEE_OTHER_303));
+                assertThat(USER_INFO_REQUESTS.get(), is(1));
+                assertThat(USER_INFO_AUTHORIZATION.get(), is("Bearer access-token"));
+
+                SetCookie localCookie = localAuthenticationCookie(response, tenant);
+                JsonObject stored = OidcCookieStateHandler.create("default", tenant)
+                        .decodeLocalAuthenticationResult(localCookie.value(), OidcIdTokenDecryptor.create(tenant))
+                        .orElseThrow()
+                        .userInfo()
+                        .orElseThrow();
+                assertThat(stored, is(userInfoClaims));
+
+                try (OidcProvider provider = OidcProvider.create(providerConfig(tenant))) {
+                    AuthenticationResponse authentication = provider.authenticate(OidcProviderTest.request(null,
+                            SecurityEnvironment.builder()
+                                    .targetUri(URI.create("https://rp.example/resource"))
+                                    .header(HeaderNames.COOKIE.defaultCase(), localCookie.name() + "=" + localCookie.value())
+                                    .build()));
+                    assertThat(authentication.status(), is(SecurityResponse.SecurityStatus.SUCCESS));
+                    Subject subject = authentication.user().orElseThrow();
+                    assertThat(subject.principal().id(), is(issuerSubjectPrincipalId()));
+                    assertThat(subject.principal().getName(), is("userinfo-user"));
+                    assertThat(subject.principal().abacAttributeRaw("email"), is("userinfo@example.org"));
+                    assertThat(subject.principal().abacAttributeRaw("private_note"), is(PRIVATE_NOTE));
+                    assertThat(subject.principal().abacAttributeRaw("custom_profile"), is(profile.toString()));
+                    assertThat(subject.grants(Role.class).stream().map(Role::getName).toList(), is(List.of("admin")));
+                    assertThat(USER_INFO_REQUESTS.get(), is(1));
+                }
+            }
+        } finally {
+            rpServer.stop();
+        }
+    }
+
+    @Test
     void redirectionEndpointRouteDiscardsUserInfoWhenStoragePolicyNone(URI serverUri) {
         userInfoEndpointResponseBody = userInfoEndpointResponse(SUBJECT)
                 .set("preferred_username", "userinfo-user")
@@ -2265,6 +2331,55 @@ class OidcFeatureRouteTest {
                 assertThat(subject.principal().getName(), is(USERNAME));
                 assertThat(subject.principal().abacAttributeRaw("email"), is(EMAIL));
                 assertThat(subject.grants(Role.class).isEmpty(), is(true));
+            }
+        } finally {
+            rpServer.stop();
+        }
+    }
+
+    @Test
+    void disabledUserInfoDoesNotCallEndpointOrStoreItsClaims(URI serverUri) {
+        // If the disabled endpoint were called, its response would fail the callback.
+        userInfoEndpointStatus = Status.BAD_GATEWAY_502;
+        OidcTenantConfig tenant = tenantConfigWithUserInfo(serverUri, userInfo -> userInfo.enabled(false));
+        WebServer rpServer = oidcFeatureServer(providerConfig(tenant));
+        try {
+            SetCookie stateCookie = authenticationRequestCookie(callbackUri(rpServer), tenant);
+            try (HttpClientResponse response = WebClient.builder()
+                    .baseUri(rpBaseUri(rpServer))
+                    .build()
+                    .get("/oidc/callback")
+                    .followRedirects(false)
+                    .queryParam("code", "authorization-code")
+                    .queryParam("state", STATE)
+                    .header(HeaderNames.COOKIE, stateCookie.name() + "=" + stateCookie.value())
+                    .request()) {
+                assertThat(response.status(), is(Status.SEE_OTHER_303));
+                assertThat(USER_INFO_REQUESTS.get(), is(0));
+                assertThat(USER_INFO_AUTHORIZATION.get(), is(""));
+
+                SetCookie localCookie = localAuthenticationCookie(response, tenant);
+                assertThat(OidcCookieStateHandler.create("default", tenant)
+                                   .decodeLocalAuthenticationResult(localCookie.value(), OidcIdTokenDecryptor.create(tenant))
+                                   .orElseThrow()
+                                   .userInfo()
+                                   .isEmpty(),
+                           is(true));
+
+                try (OidcProvider provider = OidcProvider.create(providerConfig(tenant))) {
+                    AuthenticationResponse authentication = provider.authenticate(OidcProviderTest.request(null,
+                            SecurityEnvironment.builder()
+                                    .targetUri(URI.create("https://rp.example/resource"))
+                                    .header(HeaderNames.COOKIE.defaultCase(), localCookie.name() + "=" + localCookie.value())
+                                    .build()));
+                    assertThat(authentication.status(), is(SecurityResponse.SecurityStatus.SUCCESS));
+                    Subject subject = authentication.user().orElseThrow();
+                    assertThat(subject.principal().id(), is(issuerSubjectPrincipalId()));
+                    assertThat(subject.principal().getName(), is(USERNAME));
+                    assertThat(subject.principal().abacAttributeRaw("email"), is(EMAIL));
+                    assertThat(subject.grants(Role.class).isEmpty(), is(true));
+                    assertThat(USER_INFO_REQUESTS.get(), is(0));
+                }
             }
         } finally {
             rpServer.stop();

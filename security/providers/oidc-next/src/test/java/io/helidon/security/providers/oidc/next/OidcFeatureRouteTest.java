@@ -197,6 +197,35 @@ class OidcFeatureRouteTest {
     }
 
     @Test
+    void duplicateAuthorizationCodeCannotBeRedeemedThroughCallback(URI serverUri) {
+        OidcTenantConfig tenant = tenantConfig(serverUri);
+        WebServer rpServer = oidcFeatureServer(providerConfig(tenant));
+        try {
+            WebClient client = WebClient.builder().baseUri(rpBaseUri(rpServer)).followRedirects(false).build();
+            try {
+                SetCookie stateCookie = authenticationRequestCookie(callbackUri(rpServer), tenant);
+                URI callback = URI.create(callbackUri(rpServer) + "?code=first&code=second&state=" + STATE);
+                try (HttpClientResponse response = client.get().uri(callback)
+                        .header(HeaderNames.COOKIE, stateCookie.name() + "=" + stateCookie.value())
+                        .request()) {
+                    assertThat(response.status(), is(Status.BAD_REQUEST_400));
+                    assertThat(response.as(String.class), is("Authorization Response is invalid"));
+                    List<String> responseCookies = response.headers().get(HeaderNames.SET_COOKIE).allValues();
+                    assertRemovalCookie(responseCookies, stateCookie.name());
+                    assertThat(responseCookies.stream()
+                                       .noneMatch(cookie -> cookie.startsWith(
+                                               tenant.cookies().localAuthenticationCookieName() + "=")), is(true));
+                    assertThat(TOKEN_REQUESTS.get(), is(0));
+                }
+            } finally {
+                client.closeResource();
+            }
+        } finally {
+            rpServer.stop();
+        }
+    }
+
+    @Test
     void sharedMultiIssuerCallbackRejectsMissingIssuerBeforeWrongTokenEndpoint(URI serverUri) {
         String attackerTenantId = "attacker";
         String attackerState = authorizationState(attackerTenantId, 1);

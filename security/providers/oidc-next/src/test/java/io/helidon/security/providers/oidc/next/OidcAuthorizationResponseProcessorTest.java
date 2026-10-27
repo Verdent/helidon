@@ -88,6 +88,50 @@ class OidcAuthorizationResponseProcessorTest {
         assertThat(removalCookie.maxAge().orElseThrow().getSeconds(), is(0L));
     }
 
+    @TestFactory
+    Stream<DynamicTest> malformedAuthorizationResponseCannotUseValidState() {
+        return Stream.of(
+                Map.entry("", "Authorization Response code is missing"),
+                Map.entry("code=", "Authorization Response code must appear exactly once"),
+                Map.entry("code=first&code=second", "Authorization Response code must appear exactly once"),
+                Map.entry("code=first&code=first", "Authorization Response code must appear exactly once"),
+                Map.entry("error=", "Authorization Response error must appear exactly once"),
+                Map.entry("error=access_denied&error=access_denied",
+                          "Authorization Response error must appear exactly once"),
+                Map.entry("code=first&error=access_denied", "Authorization Response cannot contain both code and error"),
+                Map.entry("error=access_denied&error_description=",
+                          "Authorization Response error_description must appear exactly once"),
+                Map.entry("error=access_denied&error_description=denied&error_description=denied",
+                          "Authorization Response error_description must appear exactly once"),
+                Map.entry("error=access_denied&error_uri=",
+                          "Authorization Response error_uri must appear exactly once"),
+                Map.entry("error=access_denied&error_uri=https%3A%2F%2Fissuer.example%2Fhelp"
+                                  + "&error_uri=https%3A%2F%2Fissuer.example%2Fhelp",
+                          "Authorization Response error_uri must appear exactly once"))
+                .map(testCase -> dynamicTest(testCase.getKey().isEmpty() ? "no code or error" : testCase.getKey(), () -> {
+                    OidcTenantConfig tenant = authorizationCodeTenant("test-cookie-password", REDIRECTION_ENDPOINT_URI);
+                    OidcAuthenticationRequestState state = authenticationRequestState("default", STATE,
+                                                                                      REDIRECTION_ENDPOINT_URI,
+                                                                                      NOW.plusSeconds(60));
+                    String query = testCase.getKey().isEmpty() ? "state=" + STATE
+                            : testCase.getKey() + "&state=" + STATE;
+                    URI callback = URI.create(REDIRECTION_ENDPOINT_URI + "?" + query);
+
+                    OidcAuthorizationResponseResult result = process(providerConfig("default", tenant),
+                                                                      UriQuery.create(callback), cookies(tenant, state),
+                                                                      callback, NOW);
+
+                    assertThat(result.invalid(), is(true));
+                    assertThat(result.description(), is(testCase.getValue()));
+                    assertThat(result.authorizationCode().isEmpty(), is(true));
+                    assertThat(result.stateCookies(), hasSize(1));
+                    SetCookie removalCookie = result.stateCookies().getFirst();
+                    assertThat(removalCookie.name(), is(tenant.cookies().authenticationRequestCookieName()));
+                    assertThat(removalCookie.value(), is(""));
+                    assertThat(removalCookie.maxAge().orElseThrow().getSeconds(), is(0L));
+                }));
+    }
+
     @Test
     void customStateRoutesFromProtectedRequestCookieAndRunsAdapterValidation() {
         AtomicInteger validations = new AtomicInteger();

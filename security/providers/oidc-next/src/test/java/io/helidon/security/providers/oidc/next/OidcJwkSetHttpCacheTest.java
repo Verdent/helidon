@@ -38,6 +38,7 @@ import java.util.stream.IntStream;
 import io.helidon.common.configurable.Resource;
 import io.helidon.common.configurable.ResourceConfig;
 import io.helidon.http.DateTime;
+import io.helidon.http.Header;
 import io.helidon.http.HeaderName;
 import io.helidon.http.HeaderNames;
 import io.helidon.http.HeaderValues;
@@ -108,6 +109,118 @@ class OidcJwkSetHttpCacheTest {
             assertThat(peer.requests.get(), is(1));
             clock.advance(Duration.ofSeconds(1));
             assertThat(peer.manager.jwkKeys().forKeyId("sign-rsa").isPresent(), is(true));
+            assertThat(peer.requests.get(), is(2));
+        }
+    }
+
+    @Test
+    void invalidAgeDoesNotPublishKeysAndCanBeRetried() {
+        for (String invalidAge : List.of("-1", "1.5", "unknown", "9223372036854775808", "unknown, 90")) {
+            MutableClock clock = new MutableClock();
+            try (Peer peer = new Peer(clock, OidcJwkSetConfig.create())) {
+                peer.respond(ORIGINAL, Map.of(HeaderNames.CACHE_CONTROL, "max-age=120", HeaderNames.AGE, invalidAge));
+                assertThrows(OidcJwkSetManager.UnavailableException.class, peer.manager::jwkKeys);
+
+                peer.respond(ROTATED, Map.of());
+                assertThrows(OidcJwkSetManager.UnavailableException.class, peer.manager::jwkKeys);
+                assertThat(peer.requests.get(), is(1));
+
+                clock.advance(Duration.ofSeconds(10));
+                JwkKeys recovered = peer.manager.jwkKeys();
+                assertThat(recovered.forKeyId("verify-rsa").isEmpty(), is(true));
+                assertThat(recovered.forKeyId("sign-rsa").isPresent(), is(true));
+                assertThat(peer.requests.get(), is(2));
+            }
+        }
+    }
+
+    @Test
+    void separateAgeFieldsUseTheFirstValue() {
+        MutableClock clock = new MutableClock();
+        try (Peer peer = new Peer(clock, OidcJwkSetConfig.create())) {
+            peer.respond(ORIGINAL, Map.of(HeaderNames.CACHE_CONTROL, "max-age=120", HeaderNames.AGE, "90"),
+                         HeaderValues.create(HeaderNames.AGE, "360"));
+            assertThat(peer.manager.jwkKeys().forKeyId("verify-rsa").isPresent(), is(true));
+            peer.respond(ROTATED, Map.of());
+
+            clock.advance(Duration.ofSeconds(29));
+            assertThat(peer.manager.jwkKeys().forKeyId("verify-rsa").isPresent(), is(true));
+            assertThat(peer.requests.get(), is(1));
+            clock.advance(Duration.ofSeconds(1));
+            assertThat(peer.manager.jwkKeys().forKeyId("sign-rsa").isPresent(), is(true));
+            assertThat(peer.requests.get(), is(2));
+        }
+    }
+
+    @Test
+    void commaSeparatedAgeUsesTheFirstMember() {
+        for (String age : List.of("90, 360", "90, unknown")) {
+            MutableClock clock = new MutableClock();
+            try (Peer peer = new Peer(clock, OidcJwkSetConfig.create())) {
+                peer.respond(ORIGINAL, Map.of(HeaderNames.CACHE_CONTROL, "max-age=120", HeaderNames.AGE, age));
+                assertThat(peer.manager.jwkKeys().forKeyId("verify-rsa").isPresent(), is(true));
+                peer.respond(ROTATED, Map.of());
+
+                clock.advance(Duration.ofSeconds(29));
+                assertThat(peer.manager.jwkKeys().forKeyId("verify-rsa").isPresent(), is(true));
+                assertThat(peer.requests.get(), is(1));
+                clock.advance(Duration.ofSeconds(1));
+                assertThat(peer.manager.jwkKeys().forKeyId("sign-rsa").isPresent(), is(true));
+                assertThat(peer.requests.get(), is(2));
+            }
+        }
+    }
+
+    @Test
+    void commaSeparatedAgeCannotHideAnExpiredFirstMember() {
+        MutableClock clock = new MutableClock();
+        try (Peer peer = new Peer(clock, OidcJwkSetConfig.create())) {
+            peer.respond(ORIGINAL, Map.of(HeaderNames.CACHE_CONTROL, "max-age=30", HeaderNames.AGE, "360, 0"));
+            assertThrows(OidcJwkSetManager.UnavailableException.class, peer.manager::jwkKeys);
+            assertThat(peer.requests.get(), is(1));
+        }
+    }
+
+    @Test
+    void repeatedCacheControlFieldsUseTheShortestFreshAndStaleWindows() {
+        MutableClock clock = new MutableClock();
+        OidcJwkSetConfig config = OidcJwkSetConfig.builder()
+                .maxStaleOnError(Duration.ofSeconds(30)).buildPrototype();
+        try (Peer peer = new Peer(clock, config)) {
+            peer.respond(ORIGINAL, Map.of(HeaderNames.CACHE_CONTROL, "max-age=60, stale-if-error=20"),
+                         HeaderValues.create(HeaderNames.CACHE_CONTROL, "max-age=10, stale-if-error=5"));
+            JwkKeys original = peer.manager.jwkKeys();
+            peer.fail(Status.INTERNAL_SERVER_ERROR_500);
+
+            clock.advance(Duration.ofSeconds(9));
+            assertThat(peer.manager.jwkKeys(), sameInstance(original));
+            assertThat(peer.requests.get(), is(1));
+            clock.advance(Duration.ofSeconds(1));
+            assertThat(peer.manager.jwkKeys(), sameInstance(original));
+            assertThat(peer.requests.get(), is(2));
+            clock.advance(Duration.ofSeconds(4));
+            assertThat(peer.manager.jwkKeys(), sameInstance(original));
+            clock.advance(Duration.ofSeconds(1));
+            assertThrows(OidcJwkSetManager.UnavailableException.class, peer.manager::jwkKeys);
+            assertThat(peer.requests.get(), is(2));
+        }
+    }
+
+    @Test
+    void noCacheInASeparateFieldPreventsServingStaleKeys() {
+        MutableClock clock = new MutableClock();
+        OidcJwkSetConfig config = OidcJwkSetConfig.builder()
+                .maxStaleOnError(Duration.ofSeconds(30)).buildPrototype();
+        try (Peer peer = new Peer(clock, config)) {
+            peer.respond(ORIGINAL, Map.of(HeaderNames.CACHE_CONTROL, "max-age=60, stale-if-error=20"),
+                         HeaderValues.create(HeaderNames.CACHE_CONTROL, "no-cache, max-age=10"));
+            JwkKeys original = peer.manager.jwkKeys();
+            peer.fail(Status.INTERNAL_SERVER_ERROR_500);
+
+            clock.advance(Duration.ofSeconds(9));
+            assertThat(peer.manager.jwkKeys(), sameInstance(original));
+            clock.advance(Duration.ofSeconds(1));
+            assertThrows(OidcJwkSetManager.UnavailableException.class, peer.manager::jwkKeys);
             assertThat(peer.requests.get(), is(2));
         }
     }
@@ -389,7 +502,10 @@ class OidcJwkSetHttpCacheTest {
         return DateTime.RFC_1123_DATE_TIME.format(instant.atZone(ZoneOffset.UTC));
     }
 
-    private record Reply(String keys, Map<HeaderName, String> headers, Status status) {
+    private record Reply(String keys, Map<HeaderName, String> headers, Status status, List<Header> additionalHeaders) {
+        private Reply(String keys, Map<HeaderName, String> headers, Status status) {
+            this(keys, headers, status, List.of());
+        }
     }
 
     private static final class Peer implements AutoCloseable {
@@ -415,6 +531,7 @@ class OidcJwkSetHttpCacheTest {
                     response.header(HeaderValues.create(HeaderNames.DATE, httpDate(clock.instant())));
                 }
                 current.headers().forEach((name, value) -> response.header(HeaderValues.create(name, value)));
+                current.additionalHeaders().forEach(response.headers()::add);
                 response.send(current.keys());
             })).build().start();
             client = WebClient.builder().shareConnectionCache(false).readTimeout(Duration.ofSeconds(3)).build();
@@ -426,8 +543,8 @@ class OidcJwkSetHttpCacheTest {
                                                clock, config);
         }
 
-        private void respond(String keys, Map<HeaderName, String> headers) {
-            reply.set(new Reply(keys, headers, Status.OK_200));
+        private void respond(String keys, Map<HeaderName, String> headers, Header... additionalHeaders) {
+            reply.set(new Reply(keys, headers, Status.OK_200, List.of(additionalHeaders)));
         }
 
         private void fail(Status status) {

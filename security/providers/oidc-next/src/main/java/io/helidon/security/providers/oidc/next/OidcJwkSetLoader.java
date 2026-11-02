@@ -230,8 +230,13 @@ final class OidcJwkSetLoader {
                 .flatMap(OidcJwkSetLoader::httpDate)
                 .map(date -> positiveDuration(date, receivedAt))
                 .orElse(Duration.ZERO);
+        // RFC 9111, 5.1: when a singleton Age is received as a list, use its first member just as with
+        // separate Age fields. Still reject an invalid first member rather than trusting an unknown key age.
         Optional<Duration> ageHeader = headers.first(HeaderNames.AGE)
-                .flatMap(OidcJwkSetLoader::parseDeltaSeconds);
+                .flatMap(field -> {
+                    int comma = field.indexOf(',');
+                    return parseDeltaSeconds(comma < 0 ? field : field.substring(0, comma));
+                });
         if (headers.contains(HeaderNames.AGE) && ageHeader.isEmpty()) {
             throw new IllegalStateException("JWK Set endpoint returned an invalid Age header");
         }

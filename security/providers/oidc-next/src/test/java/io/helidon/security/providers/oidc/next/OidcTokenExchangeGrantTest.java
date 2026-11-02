@@ -561,6 +561,46 @@ class OidcTokenExchangeGrantTest {
     }
 
     @Test
+    void invalidTokenExchangeResponsesCannotBeForwardedOrCached() {
+        JsonObject valid = tokenExchangeResponse("not-forwarded", 600);
+        List<JsonObject> invalidResponses = List.of(
+                JsonObject.builder().from(valid).unset("access_token").build(),
+                JsonObject.builder().from(valid).set("issued_token_type", 42).build(),
+                JsonObject.builder().from(valid).unset("token_type").build(),
+                JsonObject.builder().from(valid).set("scope", "orders.read  orders.write").build());
+
+        int expectedRequests = 0;
+        for (JsonObject invalid : invalidResponses) {
+            responseBody = invalid.toString();
+            try (OidcProvider provider = provider(confidentialTenant(), tokenExchangeTarget())) {
+                for (int attempt = 0; attempt < 2; attempt++) {
+                    OutboundSecurityResponse response = provider.outboundSecurity(providerRequest(SUBJECT_TOKEN),
+                                                                                  outboundEnvironment(),
+                                                                                  EndpointConfig.create());
+
+                    assertThat(invalid.toString(), response.status(), is(SecurityResponse.SecurityStatus.FAILURE));
+                    assertThat(response.description().orElseThrow(), is("Token Exchange failed"));
+                    assertThat(response.requestHeaders().containsKey(HeaderNames.AUTHORIZATION.defaultCase()), is(false));
+                }
+                expectedRequests += 2;
+                assertThat(REQUEST_COUNT.get(), is(expectedRequests));
+
+                responseBody = tokenExchangeResponse("recovered-" + expectedRequests, 600).toString();
+                for (int attempt = 0; attempt < 2; attempt++) {
+                    OutboundSecurityResponse response = provider.outboundSecurity(providerRequest(SUBJECT_TOKEN),
+                                                                                  outboundEnvironment(),
+                                                                                  EndpointConfig.create());
+                    assertThat(response.status(), is(SecurityResponse.SecurityStatus.SUCCESS));
+                    assertThat(response.requestHeaders().get(HeaderNames.AUTHORIZATION.defaultCase()),
+                               is(List.of("Bearer recovered-" + expectedRequests)));
+                }
+                expectedRequests++;
+                assertThat(REQUEST_COUNT.get(), is(expectedRequests));
+            }
+        }
+    }
+
+    @Test
     void targetConfigurationCanSelectTokenExchange() {
         Config config = Config.builder()
                 .sources(ConfigSources.create(Map.ofEntries(
@@ -727,6 +767,69 @@ class OidcTokenExchangeGrantTest {
                 assertThat(METADATA_REQUEST_COUNT.get(), is(0));
                 assertThat(REQUEST_COUNT.get(), is(1));
             }
+        }
+    }
+
+    @Test
+    void tokenExchangeResponseRequiresStringParameters() {
+        JsonObject valid = tokenExchangeResponse("issued-token", 600);
+        for (String requiredField : List.of("access_token", "issued_token_type", "token_type")) {
+            for (JsonObject invalid : List.of(
+                    JsonObject.builder().from(valid).unset(requiredField).build(),
+                    JsonObject.builder().from(valid).setNull(requiredField).build(),
+                    JsonObject.builder().from(valid).set(requiredField, "").build(),
+                    JsonObject.builder().from(valid).set(requiredField, " \t").build(),
+                    JsonObject.builder().from(valid).set(requiredField, 42).build(),
+                    JsonObject.builder().from(valid).set(requiredField, true).build(),
+                    JsonObject.builder().from(valid).setStrings(requiredField, List.of("issued-token")).build())) {
+                IllegalArgumentException thrown = assertThrows(IllegalArgumentException.class,
+                                                               () -> OidcTokenExchangeResponse.fromJson(invalid));
+
+                assertThat(requiredField + " in " + invalid, thrown.getMessage(), containsString("Token Exchange response"));
+            }
+        }
+    }
+
+    @Test
+    void tokenExchangeResponseAcceptsCaseInsensitiveBearerAndOptionalScope() {
+        JsonObject base = tokenExchangeResponse("issued-token", 600);
+        for (String tokenType : List.of("Bearer", "bearer", "BEARER", "BeArEr")) {
+            OidcTokenExchangeResponse response = OidcTokenExchangeResponse.fromJson(JsonObject.builder()
+                    .from(base)
+                    .set("token_type", tokenType)
+                    .set("scope", "orders.read orders.write")
+                    .build());
+
+            assertThat(response.accessToken(), is("issued-token"));
+            assertThat(response.issuedTokenType(), is(ACCESS_TOKEN_TYPE));
+            assertThat(response.tokenType(), is(tokenType));
+            assertThat(response.expiresIn(), is(Optional.of(600L)));
+            assertThat(response.scope(), is(Optional.of("orders.read orders.write")));
+        }
+        assertThat(OidcTokenExchangeResponse.fromJson(base).scope(), is(Optional.empty()));
+    }
+
+    @Test
+    void tokenExchangeResponseRejectsInvalidScopeGrammarAndTypes() {
+        JsonObject base = tokenExchangeResponse("issued-token", 600);
+        for (String invalidScope : List.of("", " ", " orders.read", "orders.read ",
+                                           "orders.read  orders.write", "orders.read\torders.write",
+                                           "orders.read\norders.write", "orders\"read", "orders\\read", "café")) {
+            JsonObject invalid = JsonObject.builder().from(base).set("scope", invalidScope).build();
+            IllegalArgumentException thrown = assertThrows(IllegalArgumentException.class,
+                                                           () -> OidcTokenExchangeResponse.fromJson(invalid));
+
+            assertThat(invalidScope, thrown.getMessage(), containsString("scope"));
+        }
+        for (JsonObject invalid : List.of(
+                JsonObject.builder().from(base).setNull("scope").build(),
+                JsonObject.builder().from(base).set("scope", 42).build(),
+                JsonObject.builder().from(base).set("scope", true).build(),
+                JsonObject.builder().from(base).setStrings("scope", List.of("orders.read")).build())) {
+            IllegalArgumentException thrown = assertThrows(IllegalArgumentException.class,
+                                                           () -> OidcTokenExchangeResponse.fromJson(invalid));
+
+            assertThat(invalid.toString(), thrown.getMessage(), containsString("scope"));
         }
     }
 

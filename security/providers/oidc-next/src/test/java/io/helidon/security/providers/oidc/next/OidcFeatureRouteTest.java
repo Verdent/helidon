@@ -1321,6 +1321,60 @@ class OidcFeatureRouteTest {
     }
 
     @Test
+    void tokenResponseAdapterFailureCannotIssueBrowserSessionAndFreshLoginRecovers(URI serverUri) {
+        AtomicInteger responses = new AtomicInteger();
+        OidcTenantAdapter adapter = new OidcTenantAdapter() {
+            @Override
+            public String name() {
+                return "callback-token-response-failure-test";
+            }
+
+            @Override
+            public String type() {
+                return "callback-token-response-failure-test";
+            }
+
+            @Override
+            public JsonObject tokenResponse(OidcTenantConfig tenant, TokenGrant grant, JsonObject response) {
+                assertThat(grant, is(TokenGrant.AUTHORIZATION_CODE));
+                return switch (responses.incrementAndGet()) {
+                    case 1 -> throw new IllegalStateException("response adapter failed");
+                    case 2 -> null;
+                    default -> response;
+                };
+            }
+        };
+        OidcTenantConfig tenant = OidcTenantConfig.builder(tenantConfig(serverUri)).adapter(adapter).buildPrototype();
+        WebServer rp = oidcFeatureServer(providerConfig(tenant));
+        WebClient client = WebClient.builder().baseUri(rpBaseUri(rp)).build();
+        try {
+            for (int attempt = 1; attempt <= 3; attempt++) {
+                SetCookie state = authenticationRequestCookie(callbackUri(rp), tenant);
+                try (HttpClientResponse callback = client.get("/oidc/callback").followRedirects(false)
+                        .queryParam("code", "new-code-" + attempt)
+                        .queryParam("state", STATE)
+                        .header(HeaderNames.COOKIE, state.name() + "=" + state.value())
+                        .request()) {
+                    assertThat(TOKEN_REQUESTS.get(), is(attempt));
+                    assertThat(responses.get(), is(attempt));
+                    assertRemovalCookie(callback.headers().get(HeaderNames.SET_COOKIE).allValues(), state.name());
+                    if (attempt < 3) {
+                        assertThat(callback.status(), is(Status.BAD_GATEWAY_502));
+                        assertThat(callback.as(String.class), is("Token Endpoint exchange failed"));
+                        assertNoLocalAuthenticationCookie(callback, tenant);
+                    } else {
+                        assertThat(callback.status(), is(Status.SEE_OTHER_303));
+                        assertThat(localAuthenticationCookie(callback, tenant).value().isEmpty(), is(false));
+                    }
+                }
+            }
+        } finally {
+            client.closeResource();
+            rp.stop();
+        }
+    }
+
+    @Test
     void storedSessionMappingRejectionAfterRefreshRemovesCookies(URI serverUri) {
         AtomicInteger mappings = new AtomicInteger();
         AtomicReference<Subject> mapped = new AtomicReference<>();

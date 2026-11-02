@@ -127,6 +127,7 @@ class OidcAuthorizationCodeTokenExchangeTest {
             "urn:ietf:params:oauth:client-assertion-type:jwt-bearer";
 
     private static final AtomicReference<RecordedRequest> RECORDED_REQUEST = new AtomicReference<>();
+    private static final AtomicInteger TOKEN_ENDPOINT_REQUESTS = new AtomicInteger();
     private static final AtomicReference<String> JWK_SET = new AtomicReference<>();
     private static final AtomicReference<String> HTTPS_METADATA_RESPONSE = new AtomicReference<>();
     private static final AtomicInteger HTTPS_METADATA_REQUESTS = new AtomicInteger();
@@ -245,6 +246,7 @@ class OidcAuthorizationCodeTokenExchangeTest {
         responsePragma = "no-cache";
         userInfoStatus = 200;
         RECORDED_REQUEST.set(null);
+        TOKEN_ENDPOINT_REQUESTS.set(0);
         JWK_SET.set(Resource.create("oidc-next-encrypt-public-jwk.json").string());
         CONVENTIONAL_REQUESTS.set(0);
         MUTUAL_TLS_REQUESTS.set(0);
@@ -451,6 +453,108 @@ class OidcAuthorizationCodeTokenExchangeTest {
         assertThat(tokenExchange.tokenResponse().orElseThrow().accessToken(), is("adapted-access-token"));
         assertThat(RECORDED_REQUEST.get().formParameters().get("vendor_parameter"), is(List.of("specific-value")));
         assertThat(grantSeen.get(), is(OidcTenantAdapter.TokenGrant.TOKEN_EXCHANGE));
+    }
+
+    @Test
+    void adapterTokenRequestFailuresDoNotSendCredentialsOrBlockLaterRequests() {
+        AtomicInteger invocations = new AtomicInteger();
+        OidcTenantAdapter adapter = new OidcTenantAdapter() {
+            @Override
+            public String name() {
+                return "token-request-failure-test";
+            }
+
+            @Override
+            public String type() {
+                return "token-request-failure-test";
+            }
+
+            @Override
+            public Parameters tokenRequest(OidcTenantConfig tenant, TokenGrant grant, Parameters parameters) {
+                assertThat(grant, is(TokenGrant.AUTHORIZATION_CODE));
+                return switch (invocations.incrementAndGet()) {
+                    case 1 -> throw new IllegalStateException("request adapter failed");
+                    case 2 -> null;
+                    default -> parameters;
+                };
+            }
+        };
+        OidcTenantConfig tenant = OidcTenantConfig.builder().from(confidentialTenant()).adapter(adapter).buildPrototype();
+        OidcEndpointClient client = OidcTenantContext.ready("default", tenant).endpointClient();
+
+        for (int attempt = 1; attempt <= 2; attempt++) {
+            OidcTokenEndpointResult result = client.exchangeAuthorizationCode("code-" + attempt,
+                                                                              REDIRECTION_ENDPOINT_URI,
+                                                                              Optional.of(PKCE_VERIFIER));
+
+            assertThat(result.succeeded(), is(false));
+            assertThat(result.errorResponse(), is(false));
+            assertThat(result.tokenResponse(), is(Optional.empty()));
+            assertThat(result.description(), is("OIDC adapter Token Endpoint request failed"));
+            assertThat(TOKEN_ENDPOINT_REQUESTS.get(), is(0));
+            assertThat(RECORDED_REQUEST.get(), is(nullValue()));
+        }
+
+        OidcTokenEndpointResult recovered = client.exchangeAuthorizationCode("new-code",
+                                                                               REDIRECTION_ENDPOINT_URI,
+                                                                               Optional.of(PKCE_VERIFIER));
+        assertThat(recovered.succeeded(), is(true));
+        assertThat(recovered.tokenResponse().orElseThrow().accessToken(), is("access-token"));
+        assertThat(TOKEN_ENDPOINT_REQUESTS.get(), is(1));
+        assertThat(RECORDED_REQUEST.get().authorization(),
+                   is(OidcClientAuthenticationSupport.basicAuthorization(CLIENT_ID, CLIENT_SECRET)));
+        assertThat(RECORDED_REQUEST.get().formParameters().get("code"), is(List.of("new-code")));
+    }
+
+    @Test
+    void adapterTokenResponseFailuresDoNotIssueTokensOrBlockLaterTransactions() {
+        AtomicInteger invocations = new AtomicInteger();
+        OidcTenantAdapter adapter = new OidcTenantAdapter() {
+            @Override
+            public String name() {
+                return "token-response-failure-test";
+            }
+
+            @Override
+            public String type() {
+                return "token-response-failure-test";
+            }
+
+            @Override
+            public JsonObject tokenResponse(OidcTenantConfig tenant, TokenGrant grant, JsonObject response) {
+                assertThat(grant, is(TokenGrant.AUTHORIZATION_CODE));
+                return switch (invocations.incrementAndGet()) {
+                    case 1 -> throw new IllegalStateException("response adapter failed");
+                    case 2 -> null;
+                    default -> response;
+                };
+            }
+        };
+        OidcTenantConfig tenant = OidcTenantConfig.builder().from(confidentialTenant()).adapter(adapter).buildPrototype();
+        OidcEndpointClient client = OidcTenantContext.ready("default", tenant).endpointClient();
+
+        for (int attempt = 1; attempt <= 2; attempt++) {
+            String code = "code-" + attempt;
+            OidcTokenEndpointResult result = client.exchangeAuthorizationCode(code,
+                                                                              REDIRECTION_ENDPOINT_URI,
+                                                                              Optional.of(PKCE_VERIFIER));
+
+            assertThat(result.succeeded(), is(false));
+            assertThat(result.errorResponse(), is(false));
+            assertThat(result.tokenResponse(), is(Optional.empty()));
+            assertThat(result.description(), is("Token Endpoint response is invalid"));
+            assertThat(TOKEN_ENDPOINT_REQUESTS.get(), is(attempt));
+            assertThat(RECORDED_REQUEST.get().formParameters().get("code"), is(List.of(code)));
+        }
+
+        // The earlier authorization codes reached the OP; recovery requires a new authorization transaction.
+        OidcTokenEndpointResult recovered = client.exchangeAuthorizationCode("new-code",
+                                                                               REDIRECTION_ENDPOINT_URI,
+                                                                               Optional.of(PKCE_VERIFIER));
+        assertThat(recovered.succeeded(), is(true));
+        assertThat(recovered.tokenResponse().orElseThrow().accessToken(), is("access-token"));
+        assertThat(TOKEN_ENDPOINT_REQUESTS.get(), is(3));
+        assertThat(RECORDED_REQUEST.get().formParameters().get("code"), is(List.of("new-code")));
     }
 
     @Test
@@ -1882,6 +1986,7 @@ class OidcAuthorizationCodeTokenExchangeTest {
     }
 
     private static void handleTokenEndpoint(ServerRequest request, ServerResponse response) {
+        TOKEN_ENDPOINT_REQUESTS.incrementAndGet();
         RECORDED_REQUEST.set(new RecordedRequest(request.prologue().method().text(),
                                                 request.headers().first(HeaderNames.AUTHORIZATION).orElse(""),
                                                 request.headers().first(HeaderNames.CONTENT_TYPE).orElse(""),

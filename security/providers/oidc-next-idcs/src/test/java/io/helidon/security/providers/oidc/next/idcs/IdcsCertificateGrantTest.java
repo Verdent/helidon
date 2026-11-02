@@ -18,13 +18,17 @@ package io.helidon.security.providers.oidc.next.idcs;
 
 import java.net.URI;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 
 import io.helidon.common.configurable.Resource;
 import io.helidon.common.parameters.Parameters;
 import io.helidon.common.pki.Keys;
 import io.helidon.common.tls.Tls;
 import io.helidon.common.tls.TlsClientAuth;
+import io.helidon.config.Config;
+import io.helidon.config.ConfigSources;
 import io.helidon.http.HeaderNames;
 import io.helidon.http.HeaderValues;
 import io.helidon.http.Status;
@@ -51,6 +55,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 class IdcsCertificateGrantTest {
     private static final AtomicInteger TOKEN_REQUESTS = new AtomicInteger();
     private static final AtomicInteger REDIRECT_TARGET_REQUESTS = new AtomicInteger();
+    private static final AtomicReference<String> TOKEN_SCOPE = new AtomicReference<>("");
     private static final String JWKS_SCOPE = "urn:opc:idm:__myscopes__";
 
     private static WebServer server;
@@ -83,7 +88,7 @@ class IdcsCertificateGrantTest {
             Parameters form = request.content().as(Parameters.class);
             assertThat(form.first("grant_type").orElseThrow(), is("tls_client_auth"));
             assertThat(form.first("client_id").orElseThrow(), is("client"));
-            assertThat(form.first("scope").orElseThrow(), is(JWKS_SCOPE));
+            TOKEN_SCOPE.set(form.first("scope").orElseThrow());
             response.status(tokenResponseStatus)
                     .header(HeaderValues.CONTENT_TYPE_JSON)
                     .send(tokenResponseBody);
@@ -107,6 +112,7 @@ class IdcsCertificateGrantTest {
     void reset() {
         TOKEN_REQUESTS.set(0);
         REDIRECT_TARGET_REQUESTS.set(0);
+        TOKEN_SCOPE.set("");
         redirectTokenEndpoint = false;
         tokenResponseStatus = Status.OK_200;
         tokenResponseBody = JsonObject.builder()
@@ -132,7 +138,33 @@ class IdcsCertificateGrantTest {
                                                             }).orElseThrow();
             assertThat(accessToken, is("idcs-key-reader"));
             assertThat(TOKEN_REQUESTS.get(), is(1));
+            assertThat(TOKEN_SCOPE.get(), is(JWKS_SCOPE));
             assertThat(REDIRECT_TARGET_REQUESTS.get(), is(0));
+        } finally {
+            webClient.closeResource();
+        }
+    }
+
+    @Test
+    void configuredJwkScopeReachesTheCertificateGrantRequest() {
+        String scope = "https://idcs.example/jwks.read";
+        Config config = Config.builder()
+                .sources(ConfigSources.create(Map.of("domain-uri", domainUri.toString(),
+                                                     "jwks-grant", "tls_client_auth", "jwks-scope", scope)))
+                .build();
+        IdcsTenantAdapter adapter = IdcsTenantAdapter.create(config);
+        OidcTenantConfig tenant = tenant(adapter);
+        WebClient webClient = WebClient.create(tenant.webClient());
+        try {
+            assertThat(adapter.jwkSetAccessToken(tenant,
+                                                 tenant.endpoints().jwksUri().orElseThrow(),
+                                                 webClient,
+                                                 _ -> {
+                                                     throw new AssertionError("must not use standard grant");
+                                                 }).orElseThrow(),
+                       is("idcs-key-reader"));
+            assertThat(TOKEN_REQUESTS.get(), is(1));
+            assertThat(TOKEN_SCOPE.get(), is(scope));
         } finally {
             webClient.closeResource();
         }

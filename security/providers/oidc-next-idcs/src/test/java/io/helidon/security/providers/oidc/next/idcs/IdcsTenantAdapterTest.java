@@ -338,6 +338,29 @@ class IdcsTenantAdapterTest {
     }
 
     @Test
+    void configuredJwkScopeReachesTheClientCredentialsGrant() {
+        String scope = "https://idcs-one.identity.oraclecloud.com/jwks.read";
+        Config config = Config.builder()
+                .sources(ConfigSources.create(Map.of("domain-uri", DOMAIN.toString(), "jwks-scope", scope)))
+                .build();
+        IdcsTenantAdapter adapter = IdcsTenantAdapter.create(config);
+        OidcTenantConfig tenant = OidcTenantConfig.builder().adapter(adapter).buildPrototype();
+        WebClient client = WebClient.create();
+        try {
+            assertThat(adapter.jwkSetAccessToken(tenant,
+                                                 tenant.endpoints().jwksUri().orElseThrow(),
+                                                 client,
+                                                 requestedScope -> {
+                                                     assertThat(requestedScope, is(scope));
+                                                     return "configured-scope-token";
+                                                 }).orElseThrow(),
+                       is("configured-scope-token"));
+        } finally {
+            client.closeResource();
+        }
+    }
+
+    @Test
     void domainUriMustBeSecureAndIdentifyOnlyAnOrigin() {
         for (String uri : new String[] {
                 "http://idcs.example", "https://idcs.example/path", "https://user@idcs.example",
@@ -349,6 +372,66 @@ class IdcsTenantAdapterTest {
                 .domainUri(URI.create("https://IDCS-ONE.IDENTITY.ORACLECLOUD.COM:443/"))
                 .build();
         assertThat(normalized.principalIdentityNamespace().orElseThrow(), is(DOMAIN.toString()));
+    }
+
+    @Test
+    void secureDomainUriMustBeSecureAndIdentifyOnlyAnOrigin() {
+        for (String uri : List.of("http://idcs.example", "https://idcs.example/path", "https://user@idcs.example",
+                                  "https://idcs.example?user=x", "https://idcs.example/#fragment")) {
+            IllegalArgumentException builderFailure = assertThrows(IllegalArgumentException.class,
+                                                                   () -> IdcsTenantAdapter.builder()
+                                                                           .domainUri(DOMAIN)
+                                                                           .secureDomainUri(URI.create(uri))
+                                                                           .build());
+            assertThat(builderFailure.getMessage(), containsString("secure-domain-uri"));
+
+            Config config = Config.builder()
+                    .sources(ConfigSources.create(Map.of("domain-uri", DOMAIN.toString(), "secure-domain-uri", uri)))
+                    .build();
+            IllegalArgumentException configFailure = assertThrows(IllegalArgumentException.class,
+                                                                  () -> IdcsTenantAdapter.create(config));
+            assertThat(configFailure.getMessage(), containsString("secure-domain-uri"));
+        }
+
+        IdcsTenantAdapter normalized = IdcsTenantAdapter.builder()
+                .domainUri(DOMAIN)
+                .secureDomainUri(URI.create("https://IDCS-ONE.SECURE.IDENTITY.ORACLECLOUD.COM:443/"))
+                .jwkSetGrant(IdcsTenantAdapter.JwkSetGrant.TLS_CLIENT_AUTH)
+                .build();
+        OidcTenantConfig tenant = OidcTenantConfig.builder().adapter(normalized).clientId("client").buildPrototype();
+        assertThat(tenant.endpoints().tokenEndpointUri().orElseThrow(),
+                   is(URI.create("https://idcs-one.secure.identity.oraclecloud.com/oauth2/v1/token")));
+        assertThat(tenant.endpoints().jwksUri().orElseThrow(),
+                   is(URI.create("https://idcs-one.secure.identity.oraclecloud.com/admin/v1/SigningCert/jwk")));
+    }
+
+    @Test
+    void jwkScopeRejectsBlankOrPaddedConfiguration() {
+        for (String scope : List.of("", " ", "\t", " urn:opc:idm:__myscopes__", "urn:opc:idm:__myscopes__ ")) {
+            IllegalArgumentException builderFailure = assertThrows(IllegalArgumentException.class,
+                                                                   () -> IdcsTenantAdapter.builder()
+                                                                           .domainUri(DOMAIN)
+                                                                           .jwkSetScope(scope)
+                                                                           .build());
+            assertThat(builderFailure.getMessage(), containsString("jwks-scope"));
+
+            Config config = Config.builder()
+                    .sources(ConfigSources.create(Map.of("domain-uri", DOMAIN.toString(), "jwks-scope", scope)))
+                    .build();
+            IllegalArgumentException configFailure = assertThrows(IllegalArgumentException.class,
+                                                                  () -> IdcsTenantAdapter.create(config));
+            assertThat(configFailure.getMessage(), containsString("jwks-scope"));
+        }
+    }
+
+    @Test
+    void unknownJwkGrantIsRejectedAtConfigurationTime() {
+        for (String grant : List.of("UNKNOWN", "TLS_CLIENT_AUTH ", "CLIENT-CREDENTIALS")) {
+            Config config = Config.builder()
+                    .sources(ConfigSources.create(Map.of("domain-uri", DOMAIN.toString(), "jwks-grant", grant)))
+                    .build();
+            assertThrows(IllegalArgumentException.class, () -> IdcsTenantAdapter.create(config));
+        }
     }
 
     @Test

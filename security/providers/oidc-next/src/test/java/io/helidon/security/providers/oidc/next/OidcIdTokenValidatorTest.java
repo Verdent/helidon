@@ -16,6 +16,7 @@
 
 package io.helidon.security.providers.oidc.next;
 
+import java.math.BigDecimal;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
@@ -31,6 +32,7 @@ import java.util.function.UnaryOperator;
 
 import io.helidon.common.configurable.Resource;
 import io.helidon.common.configurable.ResourceConfig;
+import io.helidon.json.JsonObject;
 import io.helidon.security.jwt.EncryptedJwt;
 import io.helidon.security.jwt.Jwt;
 import io.helidon.security.jwt.SignedJwt;
@@ -479,6 +481,51 @@ class OidcIdTokenValidatorTest {
     }
 
     @Test
+    void fractionalNotBeforeDoesNotAllowEarlyIdTokenAuthentication() {
+        OidcTenantContext context = OidcTenantContext.ready("default", tenantConfig(
+                tenant -> tenant.idToken(idToken -> idToken.clockSkew(Duration.ZERO))));
+        String token = signedIdTokenWithFractionalClaim("nbf");
+        Instant boundary = VALIDATION_TIME.plusMillis(750);
+
+        assertFailure(validator.validate(token, context, authenticationRequestState(), VALIDATION_TIME.plusMillis(500)),
+                      "ID Token claims are invalid");
+        OidcValidationResult<OidcValidatedIdToken> accepted =
+                validator.validate(token, context, authenticationRequestState(), boundary);
+        assertThat(accepted.succeeded(), is(true));
+        assertThat(accepted.validatedToken().orElseThrow().jwt().notBefore().orElseThrow(), is(boundary));
+    }
+
+    @Test
+    void fractionalIssueTimeDoesNotAllowEarlyIdTokenAuthentication() {
+        OidcTenantContext context = OidcTenantContext.ready("default", tenantConfig(
+                tenant -> tenant.idToken(idToken -> idToken.clockSkew(Duration.ZERO))));
+        String token = signedIdTokenWithFractionalClaim("iat");
+        Instant boundary = VALIDATION_TIME.plusMillis(750);
+
+        assertFailure(validator.validate(token, context, authenticationRequestState(), VALIDATION_TIME.plusMillis(500)),
+                      "ID Token claims are invalid");
+        OidcValidationResult<OidcValidatedIdToken> accepted =
+                validator.validate(token, context, authenticationRequestState(), boundary);
+        assertThat(accepted.succeeded(), is(true));
+        assertThat(accepted.validatedToken().orElseThrow().jwt().issueTime().orElseThrow(), is(boundary));
+    }
+
+    @Test
+    void fractionalExpirationAllowsAuthenticationUntilTheExactTime() {
+        OidcTenantContext context = OidcTenantContext.ready("default", tenantConfig(
+                tenant -> tenant.idToken(idToken -> idToken.clockSkew(Duration.ZERO))));
+        String token = signedIdTokenWithFractionalClaim("exp");
+        Instant boundary = VALIDATION_TIME.plusMillis(750);
+
+        OidcValidationResult<OidcValidatedIdToken> accepted =
+                validator.validate(token, context, authenticationRequestState(), VALIDATION_TIME.plusMillis(500));
+        assertThat(accepted.succeeded(), is(true));
+        assertThat(accepted.validatedToken().orElseThrow().jwt().expirationTime().orElseThrow(), is(boundary));
+        assertFailure(validator.validate(token, context, authenticationRequestState(), boundary),
+                      "ID Token claims are invalid");
+    }
+
+    @Test
     void expiredIdTokenIsRejected() {
         String idToken = signedIdToken(it -> it.issueTime(VALIDATION_TIME.minus(2, ChronoUnit.HOURS))
                 .expirationTime(VALIDATION_TIME.minus(5, ChronoUnit.MINUTES)));
@@ -703,6 +750,15 @@ class OidcIdTokenValidatorTest {
 
     private static String signedIdToken(Consumer<Jwt.Builder> customizer) {
         return signedIdToken(true, customizer);
+    }
+
+    private static String signedIdTokenWithFractionalClaim(String claim) {
+        Jwt jwt = SignedJwt.parseToken(signedIdToken(it -> it.issueTime(VALIDATION_TIME.minusSeconds(60)))).getJwt();
+        // The JWT builder serializes Instants as whole seconds; sign an explicit fractional JSON number from an OP.
+        JsonObject payload = JsonObject.builder().from(jwt.payloadJsonObject())
+                .set(claim, new BigDecimal(VALIDATION_TIME.getEpochSecond() + ".75"))
+                .build();
+        return SignedJwt.sign(jwt.headers(), payload, signKeys.forKeyId("sign-rsa").orElseThrow()).tokenContent();
     }
 
     private static String signedIdToken(boolean audience, Consumer<Jwt.Builder> customizer) {

@@ -16,6 +16,7 @@
 
 package io.helidon.security.jwt;
 
+import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.time.Instant;
@@ -116,6 +117,54 @@ public class JwtTest {
         errors = jwtValidator.validate(jwt);
         errors.log(LOGGER);
         errors.checkValid();
+    }
+
+    @Test
+    public void testFractionalNumericDates() {
+        Jwt jwt = new Jwt(JwtHeaders.builder().build(), JsonObject.builder()
+                .set(Jwt.EXPIRATION, new BigDecimal("1700000000.75"))
+                .set(Jwt.ISSUED_AT, new BigDecimal("1700000000.25"))
+                .set(Jwt.NOT_BEFORE, new BigDecimal("-0.25"))
+                .set(Jwt.UPDATED_AT, new BigDecimal("1700000000.125"))
+                .build());
+
+        assertThat(jwt.expirationTime(), is(Optional.of(Instant.ofEpochSecond(1_700_000_000L, 750_000_000))));
+        assertThat(jwt.issueTime(), is(Optional.of(Instant.ofEpochSecond(1_700_000_000L, 250_000_000))));
+        assertThat(jwt.notBefore(), is(Optional.of(Instant.ofEpochSecond(-1, 750_000_000))));
+        assertThat(jwt.updatedAt(), is(Optional.of(Instant.ofEpochSecond(1_700_000_000L, 125_000_000))));
+    }
+
+    @Test
+    public void testSubNanosecondNumericDatesRoundUp() {
+        Jwt jwt = new Jwt(JwtHeaders.builder().build(), JsonObject.builder()
+                .set(Jwt.EXPIRATION, new BigDecimal("1700000000.7500000001"))
+                .set(Jwt.NOT_BEFORE, new BigDecimal("-0.0000000001"))
+                .set(Jwt.ISSUED_AT, new BigDecimal("1E-2147483647"))
+                .build());
+
+        // An Instant is nanosecond-precise. Ceil preserves the exact validation boundary at that resolution.
+        assertThat(jwt.expirationTime(), is(Optional.of(Instant.ofEpochSecond(1_700_000_000L, 750_000_001))));
+        assertThat(jwt.notBefore(), is(Optional.of(Instant.EPOCH)));
+        assertThat(jwt.issueTime(), is(Optional.of(Instant.ofEpochSecond(0, 1))));
+    }
+
+    @Test
+    public void testUnrepresentableNumericDatesFailInsteadOfWrapping() {
+        BigDecimal maximum = BigDecimal.valueOf(Instant.MAX.getEpochSecond())
+                .add(BigDecimal.valueOf(Instant.MAX.getNano(), 9));
+        assertThat(JwtUtil.toInstant(JsonObject.builder().set(Jwt.EXPIRATION, maximum).build(), Jwt.EXPIRATION),
+                   is(Optional.of(Instant.MAX)));
+        assertThat(JwtUtil.toInstant(JsonObject.builder().set(Jwt.NOT_BEFORE, Instant.MIN.getEpochSecond()).build(),
+                                     Jwt.NOT_BEFORE), is(Optional.of(Instant.MIN)));
+        assertThrows(JwtException.class, () -> JwtUtil.toInstant(
+                JsonObject.builder().set(Jwt.EXPIRATION, maximum.add(new BigDecimal("0.0000000001"))).build(),
+                Jwt.EXPIRATION));
+        assertThrows(JwtException.class, () -> JwtUtil.toInstant(
+                JsonObject.builder().set(Jwt.NOT_BEFORE, new BigDecimal("18446744073709551616")).build(),
+                Jwt.NOT_BEFORE));
+        assertThrows(JwtException.class, () -> JwtUtil.toInstant(
+                JsonObject.builder().set(Jwt.ISSUED_AT, BigDecimal.valueOf(Instant.MIN.getEpochSecond())
+                        .subtract(new BigDecimal("0.0000000001"))).build(), Jwt.ISSUED_AT));
     }
 
     @Test

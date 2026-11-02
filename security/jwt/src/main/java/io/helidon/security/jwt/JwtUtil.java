@@ -18,6 +18,7 @@ package io.helidon.security.jwt;
 
 import java.math.BigDecimal;
 import java.math.BigInteger;
+import java.math.RoundingMode;
 import java.net.URI;
 import java.security.KeyFactory;
 import java.security.NoSuchAlgorithmException;
@@ -54,6 +55,11 @@ import io.helidon.json.JsonValue;
  * Utilities for JWT and JWK parsing.
  */
 public final class JwtUtil {
+    private static final BigDecimal NANOS_PER_SECOND = BigDecimal.valueOf(1_000_000_000L);
+    private static final BigDecimal ONE_NANOSECOND = BigDecimal.ONE.scaleByPowerOfTen(-9);
+    private static final BigDecimal MIN_INSTANT = BigDecimal.valueOf(Instant.MIN.getEpochSecond());
+    private static final BigDecimal MAX_INSTANT = BigDecimal.valueOf(Instant.MAX.getEpochSecond())
+            .add(BigDecimal.valueOf(Instant.MAX.getNano(), 9));
     private static final DateTimeFormatter YEAR_FORMAT = DateTimeFormatter.ofPattern("yyyy");
     private static final DateTimeFormatter DATE_FORMAT = DateTimeFormatter.ofPattern("yyyy-MM-dd");
     // both are thread safe according to javadoc
@@ -525,8 +531,27 @@ public final class JwtUtil {
 
     static Optional<Instant> toInstant(JsonObject json, String name) {
         return json.numberValue(name)
-                .map(BigDecimal::longValue)
-                .map(Instant::ofEpochSecond);
+                .map(value -> {
+                    if (value.compareTo(MIN_INSTANT) < 0 || value.compareTo(MAX_INSTANT) > 0) {
+                        throw invalidClaim(name, "representable NumericDate");
+                    }
+                    if (value.scale() <= 0) {
+                        return Instant.ofEpochSecond(value.longValueExact());
+                    }
+                    if (value.abs().compareTo(ONE_NANOSECOND) < 0) {
+                        return value.signum() > 0 ? Instant.ofEpochSecond(0, 1) : Instant.EPOCH;
+                    }
+                    try {
+                        // NumericDate permits fractional seconds. Round upward at nanosecond precision so a time
+                        // beyond Instant's precision never becomes valid before the represented boundary.
+                        BigDecimal nanoseconds = value.movePointRight(9).setScale(0, RoundingMode.CEILING);
+                        BigDecimal[] secondsAndNanos = nanoseconds.divideAndRemainder(NANOS_PER_SECOND);
+                        return Instant.ofEpochSecond(secondsAndNanos[0].longValueExact(),
+                                                     secondsAndNanos[1].longValueExact());
+                    } catch (ArithmeticException | DateTimeException e) {
+                        throw new JwtException("Claim \"" + name + "\" is not a representable NumericDate", e);
+                    }
+                });
     }
 
     static String toDate(LocalDate it) {

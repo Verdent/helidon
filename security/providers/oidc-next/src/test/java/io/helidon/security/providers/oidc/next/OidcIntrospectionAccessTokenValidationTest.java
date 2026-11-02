@@ -850,6 +850,39 @@ class OidcIntrospectionAccessTokenValidationTest {
     }
 
     @Test
+    void introspectedTokenNeedNotHaveExpirationClaim() {
+        responseBody = validResponse(it -> it.unset("exp")).toString();
+
+        assertThat(authenticate(provider(), OPAQUE_TOKEN).status(), is(SecurityResponse.SecurityStatus.SUCCESS));
+    }
+
+    @Test
+    void introspectedTokenExpiresAtTheClockSkewAdjustedBoundary() {
+        Instant validationTime = Instant.parse("2026-05-21T00:00:00Z");
+        for (Duration skew : List.of(Duration.ZERO, Duration.ofMinutes(1))) {
+            responseBody = validResponse(it -> it
+                    .set("iat", validationTime.minusSeconds(120).getEpochSecond())
+                    .set("nbf", validationTime.minusSeconds(120).getEpochSecond())
+                    .set("exp", validationTime.minus(skew).getEpochSecond())).toString();
+            try (OidcProvider provider = provider(tenant -> tenant.protectedResource(resource -> resource
+                    .tokenValidation(validation -> validation.method(OidcTokenValidationMethod.INTROSPECTION)
+                            .audience(AUDIENCE).clockSkew(skew))))) {
+                OidcTenantContext context = provider.tenantRuntimeRegistry().tenantContext("default").orElseThrow();
+                OidcIntrospectionAccessTokenValidator validator = new OidcIntrospectionAccessTokenValidator();
+
+                assertThat(validator.validate(new OidcAccessTokenValidationRequest(
+                                   OPAQUE_TOKEN, context, Optional.empty(), validationTime.minusNanos(1)))
+                                   .succeeded(), is(true));
+                OidcValidationResult<OidcValidatedAccessToken> atExpiration = validator.validate(
+                        new OidcAccessTokenValidationRequest(OPAQUE_TOKEN, context, Optional.empty(), validationTime));
+                assertThat(atExpiration.succeeded(), is(false));
+                assertThat(atExpiration.errorDescription(),
+                           is(Optional.of("Bearer Token introspection claims are invalid")));
+            }
+        }
+    }
+
+    @Test
     void futureNotBeforeIsRejectedWhenReturned() {
         responseBody = validResponse(it -> it.set("nbf", Instant.now().plus(5, ChronoUnit.MINUTES).getEpochSecond()))
                 .toString();

@@ -83,6 +83,11 @@ final class OidcLogoutTokenValidator {
                              now).validate(jwt).isValid()) {
             return OidcValidationResult.failure("Logout Token claims are invalid");
         }
+        // Back-Channel Logout 1.0, 2.6(4): validate exp as for an ID Token; equality is expired.
+        // The shared JWT expiration validator accepts equality, so reject that boundary here.
+        if (jwt.expirationTime().orElseThrow().equals(now.minus(idToken.clockSkew()))) {
+            return OidcValidationResult.failure("Logout Token claims are invalid");
+        }
         try {
             Optional<String> sid = OidcBackChannelSessionSupport.sid(jwt, "Logout Token");
             Optional<String> subject = jwt.subject();

@@ -124,6 +124,11 @@ final class OidcJwtAccessTokenValidator implements OidcAccessTokenValidator {
         if (!claimErrors.isValid()) {
             return OidcValidationResult.failure("Bearer Token JWT claims are invalid");
         }
+        // RFC 9068, 4: validation time must be strictly before exp, allowing configured clock skew.
+        // The shared JWT expiration validator accepts equality, so reject that boundary here.
+        if (jwt.expirationTime().orElseThrow().equals(request.validationTime().minus(tokenValidation.clockSkew()))) {
+            return OidcValidationResult.failure("Bearer Token JWT claims are invalid");
+        }
         try {
             OidcScopeSupport.validateScopeClaims(jwt.payloadClaimsJson(),
                                                  tenantContext.subjectMapping(),

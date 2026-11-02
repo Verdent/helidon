@@ -160,6 +160,13 @@ final class OidcIntrospectionAccessTokenValidator implements OidcAccessTokenVali
         if (!claimErrors.isValid()) {
             return OidcValidationResult.failure("Bearer Token introspection claims are invalid");
         }
+        // RFC 7662, 2.2 defines exp using JWT rules: an exp at the adjusted validation time is already expired.
+        // The shared JWT expiration validator accepts equality; exp remains optional in introspection responses.
+        if (validated.expirationTime()
+                .filter(expiration -> expiration.equals(validationTime.minus(tokenValidation.clockSkew())))
+                .isPresent()) {
+            return OidcValidationResult.failure("Bearer Token introspection claims are invalid");
+        }
 
         OidcValidationResult<Boolean> confirmationValidation = OidcCertificateBoundAccessTokenSupport.validate(
                 validated.claims().value(OidcCertificateBoundAccessTokenSupport.CONFIRMATION_CLAIM),

@@ -17,6 +17,7 @@
 package io.helidon.security.providers.oidc.next;
 
 import java.net.URI;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
@@ -108,6 +109,20 @@ class OidcLogoutTokenValidatorTest {
     }
 
     @Test
+    void logoutTokenExpiresAtTheClockSkewAdjustedBoundary() {
+        for (Duration skew : List.of(Duration.ZERO, Duration.ofMinutes(1))) {
+            String signed = token(builder -> builder.issueTime(NOW.minusSeconds(120))
+                    .expirationTime(NOW.minus(skew)));
+
+            assertThat(validate(signed, false, false, skew, NOW.minusNanos(1)).succeeded(), is(true));
+            OidcValidationResult<OidcBackChannelLogoutStore.LogoutEvent> atExpiration =
+                    validate(signed, false, false, skew, NOW);
+            assertThat(atExpiration.succeeded(), is(false));
+            assertThat(atExpiration.errorDescription(), is(Optional.of("Logout Token claims are invalid")));
+        }
+    }
+
+    @Test
     void rejectsUnsignedAndTamperedLogoutTokens() {
         Jwt unsigned = baseToken().algorithm(Jwk.ALG_NONE).build();
         String none = SignedJwt.sign(unsigned, Jwk.NONE_JWK).tokenContent();
@@ -134,6 +149,14 @@ class OidcLogoutTokenValidatorTest {
     private OidcValidationResult<OidcBackChannelLogoutStore.LogoutEvent> validate(String value,
                                                                                     boolean sidRequired,
                                                                                     boolean encryptionRequired) {
+        return validate(value, sidRequired, encryptionRequired, Duration.ofMinutes(1), NOW);
+    }
+
+    private OidcValidationResult<OidcBackChannelLogoutStore.LogoutEvent> validate(String value,
+                                                                                    boolean sidRequired,
+                                                                                    boolean encryptionRequired,
+                                                                                    Duration clockSkew,
+                                                                                    Instant validationTime) {
         OidcTenantConfig tenant = OidcTenantConfig.builder()
                 .issuer(ISSUER)
                 .clientId(CLIENT_ID)
@@ -142,7 +165,8 @@ class OidcLogoutTokenValidatorTest {
                         .jwksUri(verificationUri)
                         .tlsRequired(false))
                 .authorizationCode(code -> code.redirectionEndpointUri(URI.create("https://rp.example/oidc/callback")))
-                .idToken(idToken -> idToken.encryptionRequired(encryptionRequired)
+                .idToken(idToken -> idToken.clockSkew(clockSkew)
+                        .encryptionRequired(encryptionRequired)
                         .decryptionJwk(ResourceConfig.builder()
                                                .resourcePath("oidc-next-encrypt-jwk.json").buildPrototype()))
                 .logout(logout -> logout.backChannel(backChannel -> backChannel
@@ -150,7 +174,7 @@ class OidcLogoutTokenValidatorTest {
                         .sessionRequired(sidRequired)))
                 .cookies(cookies -> cookies.password("test-cookie-password"))
                 .buildPrototype();
-        return validator.validate(value, OidcTenantContext.ready("default", tenant), NOW);
+        return validator.validate(value, OidcTenantContext.ready("default", tenant), validationTime);
     }
 
     private static Jwt.Builder baseToken() {

@@ -210,6 +210,28 @@ class OidcJwtAccessTokenValidationTest {
     }
 
     @Test
+    void jwtAccessTokenExpiresAtTheClockSkewAdjustedBoundary() {
+        for (Duration skew : List.of(Duration.ZERO, Duration.ofMinutes(1))) {
+            String token = signedToken(it -> it.issueTime(TEST_INSTANT.minusSeconds(120))
+                    .expirationTime(TEST_INSTANT.minus(skew)));
+            try (OidcProvider provider = provider(true, true, jwksUri,
+                    tenant -> tenant.protectedResource(resource -> resource.tokenValidation(validation -> validation
+                            .method(OidcTokenValidationMethod.JWT).audience(AUDIENCE).clockSkew(skew))))) {
+                OidcTenantContext context = provider.tenantRuntimeRegistry().tenantContext("default").orElseThrow();
+                OidcJwtAccessTokenValidator validator = new OidcJwtAccessTokenValidator();
+
+                assertThat(validator.validate(new OidcAccessTokenValidationRequest(token, context, Optional.empty(),
+                                                                                   TEST_INSTANT.minusNanos(1)))
+                                   .succeeded(), is(true));
+                OidcValidationResult<OidcValidatedAccessToken> atExpiration = validator.validate(
+                        new OidcAccessTokenValidationRequest(token, context, Optional.empty(), TEST_INSTANT));
+                assertThat(atExpiration.succeeded(), is(false));
+                assertThat(atExpiration.errorDescription(), is(Optional.of("Bearer Token JWT claims are invalid")));
+            }
+        }
+    }
+
+    @Test
     void tenantAdapterValidatesJwtAccessTokenAndEnrichesItsSubject() {
         AtomicInteger checks = new AtomicInteger();
         OidcTenantAdapter adapter = new OidcTenantAdapter() {

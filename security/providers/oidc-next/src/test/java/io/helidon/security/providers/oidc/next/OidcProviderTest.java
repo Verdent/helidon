@@ -1378,6 +1378,9 @@ class OidcProviderTest {
         assertThat(diagnostic, not(containsString("private-value")));
     }
 
+    // OIDC Core 1.0 §3.1.3.7(1) (https://openid.net/specs/openid-connect-core-1_0.html#IDTokenValidation):
+    // "If the ID Token is encrypted, decrypt it using the keys and algorithms" specified by the Client.
+    // Browser-cookie restoration must also preserve Helidon's mapped identity, grants, and credential.
     @Test
     void localAuthenticationResultCookieAuthenticatesSubjectFromEncryptedIdToken() {
         OidcTenantConfig tenant = authorizationCodeTenant(_ -> { },
@@ -1387,7 +1390,8 @@ class OidcProviderTest {
                                                                             .buildPrototype())));
         OidcProvider provider = provider(tenant);
         String signedIdToken = signedIdToken(it -> it.email("user1@example.org")
-                .preferredUsername(USERNAME));
+                .preferredUsername(USERNAME)
+                .addPayloadClaim("groups", List.of("reader")));
         String encryptedIdToken = encryptedIdToken(signedIdToken);
         SignedJwt signedJwt = SignedJwt.parseToken(signedIdToken);
         Instant now = Instant.now();
@@ -1400,6 +1404,7 @@ class OidcProviderTest {
                                                                           signedJwt.getJwt()),
                                                  now,
                                                  now.plusSeconds(3600))
+                                .scope("openid resource.read")
                                 .buildPrototype()), Map.of(), Instant.now()).getFirst();
 
         AuthenticationResponse response = provider.authenticate(
@@ -1413,6 +1418,11 @@ class OidcProviderTest {
         assertThat(subject.principal().id(), is(issuerSubjectPrincipalId()));
         assertThat(subject.principal().getName(), is(USERNAME));
         assertThat(subject.principal().abacAttributeRaw("email"), is("user1@example.org"));
+        assertThat(subject.principal().abacAttributeRaw("preferred_username"), is(USERNAME));
+        assertThat(subject.grants(Role.class).stream().map(Role::getName).toList(), is(List.of("reader")));
+        assertThat(subject.grantsByType("scope").stream().map(Grant::getName).toList(),
+                   is(List.of("openid", "resource.read")));
+        assertThat(subject.publicCredential(TokenCredential.class).orElseThrow().token(), is("access-token"));
     }
 
     @Test

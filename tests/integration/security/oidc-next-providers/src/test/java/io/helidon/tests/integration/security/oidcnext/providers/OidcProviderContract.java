@@ -634,10 +634,26 @@ abstract class OidcProviderContract {
         }
     }
 
+    // OIDC Core 1.0 §3.1.3.7(1) (https://openid.net/specs/openid-connect-core-1_0.html#IDTokenValidation):
+    // "If the ID Token is encrypted, decrypt it using the keys and algorithms" negotiated by the RP.
+    // This live-provider test checks the resulting authenticated identity and role mapping.
     @Test
     void encryptedIdTokenCompletesTheBrowserLogin() throws Exception {
         require(IdpAdapter.Capability.ENCRYPTED_ID_TOKEN);
-        assertBrowserAuthentication(IdpAdapter.ClientMode.ENCRYPTED_ID_TOKEN);
+        try (RelyingParty rp = new RelyingParty(adapter, IdpAdapter.ClientMode.ENCRYPTED_ID_TOKEN, true, _ -> { });
+             TestBrowser browser = new TestBrowser(adapter.webClient())) {
+            authenticate(browser, rp);
+            try (HttpClientResponse response = browser.get(rp.baseUri().resolve("/resource"))) {
+                assertThat(response.status(), is(Status.OK_200));
+                assertMappedUserSubject(response.as(JsonObject.class));
+            }
+            try (HttpClientResponse response = browser.get(rp.baseUri().resolve("/roles/reader"))) {
+                assertThat(response.status(), is(Status.OK_200));
+            }
+            try (HttpClientResponse response = browser.get(rp.baseUri().resolve("/roles/admin"))) {
+                assertThat(response.status(), is(Status.FORBIDDEN_403));
+            }
+        }
     }
 
     // RP-Initiated Logout 1.0 §2 (https://openid.net/specs/openid-connect-rpinitiated-1_0.html):

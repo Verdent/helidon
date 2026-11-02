@@ -41,6 +41,10 @@ class OidcEndpointPolicyIT {
     private static final String SERVICE_CLIENT = "service-client";
     private static final String SERVICE_SECRET = "service-secret";
 
+    // RFC 6750 §3 (https://www.rfc-editor.org/rfc/rfc6750.html#section-3):
+    // "All challenges defined by this specification MUST use the auth-scheme value \"Bearer\"."
+    // The /api Bearer challenge is normative; selecting cookie-only browser routes
+    // and redirecting them is Helidon endpoint policy, not an OAuth requirement.
     @Test
     void mixedTenantDefaultsToUnauthorizedAndRouteCanRedirectForAuthenticationCookie() {
         try (TestOidcServer idp = TestOidcServer.builder()
@@ -126,6 +130,8 @@ class OidcEndpointPolicyIT {
         }
     }
 
+    // /cookie-api accepts only Helidon authentication cookies, not RFC 6750 Bearer
+    // tokens; a 401 without a Bearer challenge here is the configured local policy.
     @Test
     void authenticationCookieEndpointCanReturnUnauthorized() {
         try (TestOidcServer idp = TestOidcServer.builder()

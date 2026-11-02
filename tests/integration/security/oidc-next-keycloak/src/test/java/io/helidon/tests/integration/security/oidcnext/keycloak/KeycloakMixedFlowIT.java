@@ -42,6 +42,10 @@ class KeycloakMixedFlowIT {
     @Container
     static final GenericContainer<?> CONTAINER = KeycloakOidcContainer.CONTAINER;
 
+    // RFC 6750 §3 (https://www.rfc-editor.org/rfc/rfc6750.html#section-3):
+    // "All challenges defined by this specification MUST use the auth-scheme value \"Bearer\"."
+    // The API challenge is protocol behavior; serving browser and bearer routes side by side
+    // with their own credential policies is Helidon-specific.
     @Test
     void providerCanServeBearerApiAndBrowserPageWithKeycloak() {
         String accessToken = KeycloakOidcIntegrationSupport.passwordAccessToken();

@@ -27,6 +27,9 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 class OidcBackChannelLogoutConfigTest {
     private static final String ISSUER = "https://issuer.example";
 
+    // Back-Channel Logout 1.0 §2.2 (https://openid.net/specs/openid-connect-backchannel-1_0.html):
+    // for `backchannel_logout_session_required`, "If omitted, the default value is `false`."
+    // Requiring a shared store or OIDC feature is Helidon configuration, not RP registration metadata.
     @Test
     void backChannelIsOptInAndAnExplicitStoreAllowsAnIndependentFeature() {
         OidcTenantConfig tenant = tenant(URI.create("https://rp.example/oidc/backchannel"));
@@ -42,6 +45,9 @@ class OidcBackChannelLogoutConfigTest {
         OidcFeature.create(OidcProviderConfig.builder().putTenant("default", shared).buildPrototype());
     }
 
+    // Back-Channel Logout 1.0 §2.2: "The back-channel logout URI MUST be an absolute URI" and
+    // "The back-channel logout URI MUST NOT include a fragment component." Username, path, and
+    // cross-tenant restrictions below are additional Helidon routing policies.
     @Test
     void invalidOrAmbiguousLogoutUriFailsConfiguration() {
         for (String uri : new String[] {"/oidc/backchannel", "https://rp.example/oidc/backchannel#fragment",

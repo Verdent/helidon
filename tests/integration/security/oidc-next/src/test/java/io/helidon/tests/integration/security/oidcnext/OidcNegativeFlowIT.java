@@ -41,6 +41,9 @@ class OidcNegativeFlowIT {
     private static final String SERVICE_CLIENT = "service-client";
     private static final String SERVICE_SECRET = "service-secret";
 
+    // RFC 6749 §10.12 (https://www.rfc-editor.org/rfc/rfc6749.html#section-10.12):
+    // "The client MUST implement CSRF protection for its redirection URI." A changed state
+    // cannot be bound to this browser's original authorization request; no code is redeemed.
     @Test
     void authorizationCallbackWithTamperedStateIsRejected() {
         try (TestOidcServer idp = TestOidcServer.builder()
@@ -74,6 +77,9 @@ class OidcNegativeFlowIT {
         }
     }
 
+    // RFC 6749 §5.2 (https://www.rfc-editor.org/rfc/rfc6749.html#section-5.2):
+    // "The authorization server responds with an HTTP 400 (Bad Request) status code" for
+    // a token-endpoint error. Translating that OP error to a 502 at this RP is Helidon policy.
     @Test
     void tokenEndpointErrorResponseFailsAuthorizationCallback() {
         try (TestOidcServer idp = TestOidcServer.builder()
@@ -113,6 +119,8 @@ class OidcNegativeFlowIT {
         }
     }
 
+    // OIDC Core 1.0 §3.1.3.7 (https://openid.net/specs/openid-connect-core-1_0.html#IDTokenValidation):
+    // "Clients MUST validate the ID Token in the Token Response"; a non-ID-Token cannot complete login.
     @Test
     void invalidIdTokenFailsAuthorizationCallback() {
         try (TestOidcServer idp = TestOidcServer.builder()
@@ -160,6 +168,9 @@ class OidcNegativeFlowIT {
         }
     }
 
+    // RFC 9068 §4 (https://www.rfc-editor.org/rfc/rfc9068.html#section-4):
+    // "The JWT access token MUST be rejected if \"aud\" does not contain a resource indicator"
+    // for this resource server. The separate positive test verifies the same RP accepts valid tokens.
     @Test
     void protectedResourceRejectsJwtAccessTokenWithWrongAudience() {
         try (TestOidcServer idp = TestOidcServer.builder()

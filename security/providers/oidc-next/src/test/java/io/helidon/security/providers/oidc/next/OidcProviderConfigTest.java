@@ -1861,6 +1861,10 @@ class OidcProviderConfigTest {
         assertThat(tenant.endpoints().tlsRequired(), is(false));
     }
 
+    /*
+     * RFC 9126, 2 (https://www.rfc-editor.org/rfc/rfc9126#section-2):
+     * "The PAR endpoint URL MUST use the \"https\" scheme."
+     */
     @Test
     void authorizationCodeFlowRejectsInvalidPushedAuthorizationRequestEndpointUri() {
         IllegalArgumentException thrown = assertThrows(IllegalArgumentException.class, () -> OidcTenantConfig.builder()

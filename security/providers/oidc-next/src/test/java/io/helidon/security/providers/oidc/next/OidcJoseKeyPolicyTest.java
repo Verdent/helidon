@@ -58,6 +58,8 @@ class OidcJoseKeyPolicyTest {
 
     @Test
     void enforcesHmacHashOutputMinimumInUtf8Octets() {
+        // RFC 7518 §3.2, https://www.rfc-editor.org/rfc/rfc7518.html#section-3.2:
+        // "A key of the same size as the hash output ... or larger MUST be used with this algorithm."
         for (Map.Entry<String, Integer> requirement : Map.of("HS256", 32, "HS384", 48, "HS512", 64).entrySet()) {
             String algorithm = requirement.getKey();
             int minimumOctets = requirement.getValue();
@@ -74,6 +76,8 @@ class OidcJoseKeyPolicyTest {
 
     @Test
     void hmacMinimumCountsUtf8OctetsRatherThanCharacters() {
+        // OIDC Core §3.1.3.7(8), https://openid.net/specs/openid-connect-core-1_0.html#IDTokenValidation:
+        // "the octets of the UTF-8 representation of the client_secret" are used as the MAC key.
         assertThrows(IllegalArgumentException.class,
                      () -> OidcJoseKeyPolicy.validateClientSecret("é".repeat(15), "HS256", "client-secret"));
         OidcJoseKeyPolicy.validateClientSecret("é".repeat(16), "HS256", "client-secret");
@@ -102,6 +106,8 @@ class OidcJoseKeyPolicyTest {
 
     @Test
     void rejectsWeakRsaForEverySignatureAlgorithm() {
+        // RFC 7518 §3.3, https://www.rfc-editor.org/rfc/rfc7518.html#section-3.3:
+        // "A key of size 2048 bits or larger MUST be used with these algorithms."
         for (String algorithm : List.of("RS256", "RS384", "RS512")) {
             JwkRSA weakUndeclared = rsa(weakRsa, null, true);
             IllegalArgumentException signingFailure = assertThrows(
@@ -129,6 +135,8 @@ class OidcJoseKeyPolicyTest {
 
     @Test
     void enforcesRsaMinimumForEveryConfiguredKeyManagementAlgorithm() {
+        // RFC 7518 §§4.2-4.3, https://www.rfc-editor.org/rfc/rfc7518.html#section-4.3:
+        // "A key of size 2048 bits or larger MUST be used with these algorithms."
         for (String algorithm : List.of("RSA1_5", "RSA-OAEP", "RSA-OAEP-256")) {
             JwkRSA weakKey = rsa(weakRsa, null, true);
             JwkRSA minimumKey = rsa(minimumRsa, null, true);
@@ -213,6 +221,11 @@ class OidcJoseKeyPolicyTest {
 
     @Test
     void missingKeyIdRequiresExactlyOneEligibleVerificationKey() {
+        // OIDC Core §10.1 requires a signing party to include kid if its referenced JWK Set has multiple keys:
+        // "If there are multiple keys in the referenced JWK Set document, a kid value MUST be provided in the JOSE Header."
+        // https://openid.net/specs/openid-connect-core-1_0.html#Signing
+        // Choosing a unique eligible key on receipt and rejecting ambiguity is Helidon's interoperability policy;
+        // this does not make a multiple-key OP's missing-kid message compliant with the sender requirement.
         Jwt jwt = Jwt.builder()
                 .algorithm("RS384")
                 .subject("subject")
@@ -261,6 +274,8 @@ class OidcJoseKeyPolicyTest {
 
     @Test
     void oidcSignatureWithoutKeyIdUsesTheSoleEligibleVerificationKey() {
+        // Receiver-side choice for a missing kid: use a sole signing-eligible key even when the set
+        // also contains encryption-only keys. OIDC Core §10.1's multiple-key kid MUST applies to the sender.
         Jwt jwt = Jwt.builder()
                 .algorithm("RS384")
                 .subject("subject")

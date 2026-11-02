@@ -207,6 +207,9 @@ class OidcClientAssertionReuseTest {
 
     @Test
     void sharedKeyMaterialDoesNotShareClientIdentity() throws Exception {
+        // OIDC Core §9, https://openid.net/specs/openid-connect-core-1_0.html#ClientAuthentication:
+        // "These tokens MUST only be used once" unless reuse was negotiated. Reusing key material
+        // across clients must not reuse either the client identity or the assertion's jti.
         OidcTenantConfig original = tenant(ResourceConfig.builder().resourcePath(KEY_RESOURCE).buildPrototype());
         OidcTenantConfig other = OidcTenantConfig.builder(original).clientId("other-client").buildPrototype();
         WebClient client = WebClient.create();
@@ -224,6 +227,9 @@ class OidcClientAssertionReuseTest {
 
     @Test
     void parAssertionUsesIssuerAudienceAndRemainsFresh() throws Exception {
+        // OIDC Core §9 requires iss/sub to identify the client and jti to uniquely identify each
+        // client-authentication JWT. PAR's issuer-as-audience selection is a configuration choice;
+        // this check covers independent assertions rather than claiming an OP replay check.
         OidcClientAuthenticationSupport support = OidcClientAuthenticationSupport.tokenEndpoint(
                 tenant(ResourceConfig.builder().resourcePath(KEY_RESOURCE).buildPrototype()));
         URI parEndpoint = URI.create("https://issuer.example/par");

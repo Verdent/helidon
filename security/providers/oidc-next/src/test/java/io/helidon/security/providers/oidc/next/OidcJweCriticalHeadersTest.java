@@ -43,6 +43,12 @@ import static org.hamcrest.MatcherAssert.assertThat;
 import static org.junit.jupiter.api.DynamicTest.dynamicTest;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
+/* RFC 7516, 4.1.13: JWE `crit` has the same processing rules as RFC 7515, 4.1.11:
+ * "If any of the listed extension Header Parameters are not understood and supported by the recipient,
+ * then the JWS is invalid." https://www.rfc-editor.org/rfc/rfc7516.html#section-4.1.13
+ * https://www.rfc-editor.org/rfc/rfc7515.html#section-4.1.11
+ * The dynamic tests exercise that same JWE rule on ID Token, refresh, and UserInfo entry points.
+ */
 class OidcJweCriticalHeadersTest {
     private static final String ISSUER = "https://issuer.example";
     private static final String CLIENT_ID = "client-id";
@@ -133,11 +139,14 @@ class OidcJweCriticalHeadersTest {
         assertAccepted(JsonObject.empty());
     }
 
+    // RFC 7516, 4.1.13: noncritical extension headers are not subject to the `crit` rejection rule.
     @Test
     void unknownNonCriticalHeadersRemainAccepted() throws Exception {
         assertAccepted(JsonObject.builder().set("urn:helidon:test:extension", true).build());
     }
 
+    // RFC 7516, 4.1.13: "Header Parameters for a JWE are being referred to";
+    // Helidon rejects an unsupported critical header before doing any key work.
     @Test
     void criticalHeaderIsRejectedBeforeKeySelectionOrDecryption() {
         OidcJweDecryptor decryptor = OidcJweDecryptor.create(Optional.empty(), "test", "ID Token");
@@ -153,6 +162,7 @@ class OidcJweCriticalHeadersTest {
         assertThat(exception.getMessage(), is("ID Token JWE contains unsupported critical headers"));
     }
 
+    // Restoring a local session does not exempt its stored ID Token from the same JWE critical-header check.
     @Test
     void storedEncryptedIdTokenCannotBypassCriticalHeaderPolicy() throws Exception {
         OidcCookieStateHandler cookies = nestedTenant.cookieStateHandler();

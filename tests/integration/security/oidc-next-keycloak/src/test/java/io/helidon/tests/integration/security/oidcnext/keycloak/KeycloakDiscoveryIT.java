@@ -31,6 +31,9 @@ class KeycloakDiscoveryIT {
     @Container
     static final GenericContainer<?> CONTAINER = KeycloakOidcContainer.CONTAINER;
 
+    // OIDC Discovery 1.0 §3 (https://openid.net/specs/openid-connect-discovery-1_0.html#ProviderMetadata):
+    // issuer is "REQUIRED. URL using the `https` scheme"; Keycloak's endpoint paths below
+    // are fixture observations, not protocol-mandated URL suffixes or a test of Helidon's RP discovery.
     @Test
     void discoversOpenIdProviderMetadataFromKeycloak() {
         JsonObject metadata = KeycloakOidcIntegrationSupport.metadata();

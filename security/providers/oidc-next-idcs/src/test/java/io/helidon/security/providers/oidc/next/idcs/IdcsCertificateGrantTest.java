@@ -194,6 +194,9 @@ class IdcsCertificateGrantTest {
         }
     }
 
+    // RFC 6749 §5.1 (https://www.rfc-editor.org/rfc/rfc6749.html#section-5.1):
+    // for a successful token response, token_type is "REQUIRED. The type of the token issued".
+    // The certificate-based key-reader grant itself is IDCS-specific; this is not an OIDC flow.
     @Test
     void certificateGrantRejectsTokenResponseWithoutTokenType() {
         tokenResponseBody = JsonObject.builder()

@@ -38,6 +38,9 @@ import static org.hamcrest.MatcherAssert.assertThat;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 class OidcInMemoryLogoutStoreTest {
+    // This suite exercises the default *in-memory* revocation store and its concurrency,
+    // retention and restart policy. Back-Channel Logout defines Logout Token validation
+    // and session identification; it does not mandate that an RP persist this local store.
     private static final String ISSUER = "https://issuer.example";
     private static final Instant NOW = Instant.parse("2026-10-08T10:00:00Z");
 

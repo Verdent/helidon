@@ -106,6 +106,10 @@ class OidcCookieStateHandlerTest {
                    is(true));
     }
 
+    // OIDC Core 1.0 §3.1.2.1 (https://openid.net/specs/openid-connect-core-1_0.html):
+    // "OpenID Connect requests MUST contain the `openid` scope value."
+    // Keeping the originally requested scope in Helidon's *state cookie* is local
+    // anti-tampering/session bookkeeping; this is not a test of the OP's scope validation.
     @Test
     void authenticationRequestCookieRequiresRequestedScope() throws GeneralSecurityException {
         OidcTenantConfig tenant = tenant(CLIENT_ID, PASSWORD);
@@ -141,6 +145,9 @@ class OidcCookieStateHandlerTest {
         }
     }
 
+    // OIDC Core 1.0 §3.1.2.1: nonce is "OPTIONAL. String value used to associate a Client session
+    // with an ID Token" in the code flow. The separate routing hint remains unauthenticated
+    // until the entire state cookie is verified; hint rejection is Helidon local policy.
     @Test
     void customStateCookieRoutingHintIsUntrustedAndOmittedNonceRoundTrips() {
         OidcTenantConfig tenant = tenant(CLIENT_ID, PASSWORD);

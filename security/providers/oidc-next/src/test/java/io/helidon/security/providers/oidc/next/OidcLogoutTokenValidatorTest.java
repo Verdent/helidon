@@ -39,6 +39,10 @@ import org.junit.jupiter.api.Test;
 import static org.hamcrest.CoreMatchers.is;
 import static org.hamcrest.MatcherAssert.assertThat;
 
+/*
+ * OpenID Connect Back-Channel Logout 1.0:
+ * https://openid.net/specs/openid-connect-backchannel-1_0.html
+ */
 class OidcLogoutTokenValidatorTest {
     private static final String ISSUER = "https://issuer.example";
     private static final String CLIENT_ID = "client-id";
@@ -59,6 +63,7 @@ class OidcLogoutTokenValidatorTest {
                 .getResource("oidc-next-verify-public-jwk.json").toURI();
     }
 
+    // Back-Channel Logout 2.4: "Logout Tokens MAY contain other Claims." Explicit `typ` is RECOMMENDED, not required.
     @Test
     void acceptsTypedAndUntypedSignedTokensWithExtraClaimsAndNonemptyEventObject() {
         for (String type : List.of("logout+jwt", "JWT", "")) {
@@ -77,6 +82,8 @@ class OidcLogoutTokenValidatorTest {
         }
     }
 
+    // Back-Channel Logout 2.4: "A Logout Token MUST contain either a `sub` or a `sid` Claim".
+    // 2.2 allows an RP to declare that it requires `sid` through `backchannel_logout_session_required`.
     @Test
     void sidOnlyAndSubjectOnlyAreValidUnlessSidIsRequired() {
         String sidOnly = token(builder -> builder.subject(null));
@@ -88,6 +95,8 @@ class OidcLogoutTokenValidatorTest {
         assertThat(validate(subjectOnly, true, false).succeeded(), is(false));
     }
 
+    // Back-Channel Logout 2.4: "A `nonce` Claim MUST NOT be present." 2.6 also requires `events`, `sub`/`sid`,
+    // issuer, audience, and the ID Token time checks. Rejecting a misleading `at+jwt` typ is local security policy.
     @Test
     void rejectsMissingOrInvalidLogoutSpecificClaims() {
         for (Consumer<Jwt.Builder> mutation : List.<Consumer<Jwt.Builder>>of(
@@ -108,6 +117,7 @@ class OidcLogoutTokenValidatorTest {
         }
     }
 
+    // Back-Channel Logout 2.6: "Validate the `iss`, `aud`, `iat`, and `exp` Claims in the same way" as ID Tokens.
     @Test
     void logoutTokenExpiresAtTheClockSkewAdjustedBoundary() {
         for (Duration skew : List.of(Duration.ZERO, Duration.ofMinutes(1))) {
@@ -122,6 +132,7 @@ class OidcLogoutTokenValidatorTest {
         }
     }
 
+    // Back-Channel Logout 2.4: "A Logout Token MUST be signed and MAY also be encrypted."
     @Test
     void rejectsUnsignedAndTamperedLogoutTokens() {
         Jwt unsigned = baseToken().algorithm(Jwk.ALG_NONE).build();
@@ -136,6 +147,8 @@ class OidcLogoutTokenValidatorTest {
         assertThat(validate(altered, false, false).succeeded(), is(false));
     }
 
+    // Back-Channel Logout 2.6: decrypt using "the keys and algorithms that the Client specified during Registration";
+    // the SHOULD-reject rule for missing encryption is enforced by the explicit Helidon encryption-required setting.
     @Test
     void encryptedLogoutTokenUsesIdTokenDecryptionProfile() {
         String signed = token(_ -> { });

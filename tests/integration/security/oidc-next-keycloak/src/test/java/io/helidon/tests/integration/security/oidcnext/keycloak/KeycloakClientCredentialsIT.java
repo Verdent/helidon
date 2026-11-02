@@ -20,7 +20,6 @@ import java.net.URI;
 import java.util.concurrent.atomic.AtomicReference;
 
 import io.helidon.http.HeaderNames;
-import io.helidon.http.HttpMediaTypes;
 import io.helidon.http.Status;
 import io.helidon.security.providers.common.OutboundTarget;
 import io.helidon.security.providers.oidc.next.OidcProviderConfig;
@@ -45,8 +44,12 @@ class KeycloakClientCredentialsIT {
 
     @Test
     void outboundTargetObtainsClientCredentialsTokenFromKeycloak() {
+        // RFC 6749 §4.4.3, https://www.rfc-editor.org/rfc/rfc6749.html#section-4.4.3:
+        // "If the access token request is valid and authorized, the authorization server issues an access token".
+        // This integration test proves the outbound token is usable against the actual OP via introspection;
+        // provider unit tests independently check the exact client_credentials grant parameters.
         AtomicReference<String> downstreamAuthorization = new AtomicReference<>();
-        WebServer downstream = downstream(downstreamAuthorization);
+        WebServer downstream = KeycloakOidcIntegrationSupport.introspectingDownstream(downstreamAuthorization, false);
         String inboundToken = KeycloakOidcIntegrationSupport.clientCredentialsAccessToken();
         URI downstreamUri = URI.create("http://localhost:" + downstream.port() + "/downstream");
         OutboundTarget outboundTarget = KeycloakOidcIntegrationSupport.clientCredentialsOutboundTarget(downstreamUri);
@@ -58,6 +61,11 @@ class KeycloakClientCredentialsIT {
                     .baseUri(KeycloakOidcIntegrationSupport.rpBaseUri(rpServer))
                     .build();
             try {
+                // Control: this downstream is not merely accepting any Bearer string.
+                try (HttpClientResponse rejected = client.get().uri(downstreamUri)
+                        .header(HeaderNames.AUTHORIZATION, "Bearer invalid-token").request()) {
+                    assertThat(rejected.status(), is(Status.UNAUTHORIZED_401));
+                }
                 try (HttpClientResponse response = client.get("/proxy")
                         .header(HeaderNames.AUTHORIZATION, "Bearer " + inboundToken)
                         .request()) {
@@ -74,18 +82,6 @@ class KeycloakClientCredentialsIT {
             rpServer.stop();
             downstream.stop();
         }
-    }
-
-    private static WebServer downstream(AtomicReference<String> authorization) {
-        return WebServer.builder()
-                .port(0)
-                .routing(routing -> routing.get("/downstream", (request, response) -> {
-                    authorization.set(request.headers().first(HeaderNames.AUTHORIZATION).orElse(""));
-                    response.headers().contentType(HttpMediaTypes.PLAINTEXT_UTF_8);
-                    response.send("downstream");
-                }))
-                .build()
-                .start();
     }
 
     private static WebServer proxyServer(OidcProviderConfig providerConfig, URI downstreamUri) {

@@ -121,6 +121,21 @@
             "userinfo.token.claim": "true",
             "lightweight.claim": "false"
           }
+        },
+        {
+          "name": "helidon-userinfo-only-regression",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-property-mapper",
+          "consentRequired": false,
+          "config": {
+            "user.attribute": "email",
+            "claim.name": "userinfo_source",
+            "jsonType.label": "String",
+            "id.token.claim": "false",
+            "access.token.claim": "false",
+            "userinfo.token.claim": "true",
+            "lightweight.claim": "false"
+          }
         }
       ]
     },

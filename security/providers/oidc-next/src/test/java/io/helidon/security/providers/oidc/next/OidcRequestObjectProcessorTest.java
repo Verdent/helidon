@@ -32,6 +32,10 @@ import static org.hamcrest.CoreMatchers.is;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
+/* RFC 9101, JAR: https://www.rfc-editor.org/rfc/rfc9101.html#section-4
+ * RFC 7517, JWK use/key_ops/alg: https://www.rfc-editor.org/rfc/rfc7517.html#section-4
+ * Key selection order, minimum RSA size, and error-message hygiene are Helidon policy.
+ */
 class OidcRequestObjectProcessorTest {
     private static JwkRSA encryptionKey;
     private static Jwk signingKey;
@@ -50,6 +54,7 @@ class OidcRequestObjectProcessorTest {
                 .orElseThrow();
     }
 
+    // RFC 7517, 4.2: JWK "use" distinguishes signing from encryption; choosing the first eligible key is local policy.
     @Test
     void automaticallySelectsFirstEligibleKey() {
         JwkKeys keys = JwkKeys.builder()
@@ -109,6 +114,7 @@ class OidcRequestObjectProcessorTest {
         assertThat(OidcRequestObjectProcessor.isEligibleEncryptionJwk(weakKey, "RSA-OAEP-256", 1), is(false));
     }
 
+    // RFC 7517, 4.4: "The \"alg\" (algorithm) parameter identifies the algorithm intended for use with the key."
     @Test
     void rejectsConflictingDeclaredAlgorithm() {
         Jwk key = JwkRSA.builder()
@@ -121,6 +127,7 @@ class OidcRequestObjectProcessorTest {
         assertThat(OidcRequestObjectProcessor.isEligibleEncryptionJwk(key, "RSA-OAEP-256", 1), is(false));
     }
 
+    // RFC 7517, 4.3: key_ops "identifies the operation(s) for which the key is intended to be used".
     @Test
     void rejectsIncompatibleKeyOperations() {
         Jwk key = JwkRSA.builder()
@@ -132,6 +139,7 @@ class OidcRequestObjectProcessorTest {
         assertThat(OidcRequestObjectProcessor.isEligibleEncryptionJwk(key, "RSA-OAEP-256", 1), is(false));
     }
 
+    // RFC 7517, 4.3 defines "wrapKey" as a key operation; this public key can be used for key wrapping.
     @Test
     void acceptsEncryptionKeyOperations() {
         Jwk key = JwkRSA.builder()
@@ -143,6 +151,8 @@ class OidcRequestObjectProcessorTest {
         assertThat(OidcRequestObjectProcessor.isEligibleEncryptionJwk(key, "RSA-OAEP-256", 1), is(true));
     }
 
+    // RFC 7517, 4.5: "Use of this member is OPTIONAL" for kid;
+    // allowing it when exactly one eligible key is present is consistent with that rule.
     @Test
     void acceptsSingleEncryptionKeyWithoutKeyId() {
         Jwk key = JwkRSA.builder()

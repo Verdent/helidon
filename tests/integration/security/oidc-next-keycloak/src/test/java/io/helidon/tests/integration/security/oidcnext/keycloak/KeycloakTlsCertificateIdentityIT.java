@@ -42,6 +42,13 @@ import static org.hamcrest.CoreMatchers.is;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
+/*
+ * RFC 9101 §8 (https://www.rfc-editor.org/rfc/rfc9101.html#section-8):
+ * "Clients MUST NOT use CN-ID identifiers" governs the Request Object URI method.
+ * These tests use a signed Request Object by value in PAR: Helidon's DNS-ID rule here is
+ * additional policy. The leaf certificate is explicitly trusted in advance; RFC 9525 §6.6
+ * (https://www.rfc-editor.org/rfc/rfc9525.html#section-6.6) allows preconfigured peer exceptions.
+ */
 @Testcontainers(disabledWithoutDocker = true)
 class KeycloakTlsCertificateIdentityIT {
     private static final String RESOURCE_ROOT = "keycloak/tls/";
@@ -54,7 +61,9 @@ class KeycloakTlsCertificateIdentityIT {
     }
 
     @Test
-    void mismatchedDnsSanCertificateRejectsSignedJarPushedAuthorizationRequest() throws Exception {
+    void mismatchedDnsSanCertificateRejectsOpConnection() throws Exception {
+        // This also could fail ordinary TLS identity checks; a 503 alone does not isolate
+        // the extra signed-PAR policy. The CN-only/non-JAR comparison below does.
         assertThat(pushedAuthorizationRequestStatus("wrong-san", true, false), is(Status.SERVICE_UNAVAILABLE_503_CODE));
     }
 

@@ -30,6 +30,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
@@ -40,6 +41,7 @@ import io.helidon.http.HeaderNames;
 import io.helidon.http.Method;
 import io.helidon.http.Status;
 import io.helidon.json.JsonObject;
+import io.helidon.json.JsonParser;
 import io.helidon.security.jwt.SignedJwt;
 import io.helidon.security.providers.oidc.next.OidcAuthorizationCodeConfig;
 import io.helidon.security.providers.oidc.next.OidcCookieConfig;
@@ -61,6 +63,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestInstance;
 import org.testcontainers.DockerClientFactory;
 
+import static org.hamcrest.CoreMatchers.endsWith;
 import static org.hamcrest.CoreMatchers.hasItems;
 import static org.hamcrest.CoreMatchers.is;
 import static org.hamcrest.CoreMatchers.not;
@@ -105,6 +108,9 @@ abstract class OidcProviderContract {
         }
     }
 
+    // OIDC Discovery 1.0 §4.3 (https://openid.net/specs/openid-connect-discovery-1_0.html):
+    // "The `issuer` value returned MUST be identical to the Issuer URL". This also checks
+    // real OP metadata, not the separate RP logic for rejecting a mismatched discovery response.
     @Test
     void discoveryIdentifiesTheConfiguredIssuerAndEndpoints() {
         WebClient client = WebClient.builder().from(adapter.webClient()).build();
@@ -121,6 +127,9 @@ abstract class OidcProviderContract {
         }
     }
 
+    // RFC 9700 §2.1.1 (https://www.rfc-editor.org/rfc/rfc9700.html#section-2.1.1):
+    // for confidential clients, PKCE "is RECOMMENDED, as it provides strong protection against misuse
+    // and injection of authorization codes". The shared browser helper asserts S256 on the request.
     @Test
     void confidentialCodeFlowUsesPkceAndAuthenticatesTheUser() throws Exception {
         try (RelyingParty rp = new RelyingParty(adapter, IdpAdapter.ClientMode.BASIC, true, _ -> { });
@@ -133,6 +142,8 @@ abstract class OidcProviderContract {
         }
     }
 
+    // RFC 9700 §2.1.1: "Public clients MUST use PKCE". The OP enforces S256 and
+    // the RP does not possess a client secret for this public-client registration.
     @Test
     void publicCodeFlowAuthenticatesWithS256WithoutAClientSecret() throws Exception {
         require(IdpAdapter.Capability.PUBLIC_CLIENT);
@@ -141,40 +152,54 @@ abstract class OidcProviderContract {
 
     @Test
     void clientSecretPostAuthenticatesAtTheTokenEndpoint() throws Exception {
+        // RFC 6749, 2.3.1: "the authorization server MAY support including the client credentials in the request-body"
+        // https://www.rfc-editor.org/rfc/rfc6749#section-2.3.1
+        // The Keycloak client fixture permits only client_secret_post, so Basic cannot make this test pass.
         require(IdpAdapter.Capability.CLIENT_SECRET_POST);
         assertBrowserAuthentication(IdpAdapter.ClientMode.POST);
     }
 
+    // RFC 7523 §2.2 (https://www.rfc-editor.org/rfc/rfc7523.html#section-2.2):
+    // "The value of the \"client_assertion\" parameter contains a single JWT."
+    // The real OP requires private-key JWT authentication for this client registration.
     @Test
     void privateKeyJwtAuthenticatesAtTheTokenEndpoint() throws Exception {
         require(IdpAdapter.Capability.PRIVATE_KEY_JWT);
         assertBrowserAuthentication(IdpAdapter.ClientMode.PRIVATE_JWT);
     }
 
+    // RFC 7523 §2.2: "The value of the \"client_assertion\" parameter contains a single JWT."
+    // This fixture selects client_secret_jwt instead of private_key_jwt for the registered client.
     @Test
     void clientSecretJwtAuthenticatesAtTheTokenEndpoint() throws Exception {
         require(IdpAdapter.Capability.CLIENT_SECRET_JWT);
         assertBrowserAuthentication(IdpAdapter.ClientMode.SECRET_JWT);
     }
 
+    /*
+     * Spec: OpenID Connect Core 1.0, 5.3.2, Successful UserInfo Response.
+     * https://openid.net/specs/openid-connect-core-1_0.html#UserInfoResponse
+     * Quote: "The `sub` Claim in the UserInfo Response MUST be verified to exactly match the `sub` Claim in the ID Token"
+     */
     @Test
     void userInfoAndClaimMappingPreserveIdentityRolesAndScopes() throws Exception {
-        try (RelyingParty rp = new RelyingParty(adapter, IdpAdapter.ClientMode.BASIC, true, _ -> { });
+        URI endpoint = URI.create(metadata().stringValue("userinfo_endpoint").orElseThrow());
+        try (UserInfoRecorder recorder = new UserInfoRecorder(adapter, endpoint);
+             RelyingParty rp = new RelyingParty(adapter, IdpAdapter.ClientMode.BASIC, true,
+                     tenant -> tenant.endpoints(endpoints -> endpoints.userInfoEndpointUri(recorder.uri())));
              TestBrowser browser = new TestBrowser(adapter.webClient())) {
             authenticate(browser, rp);
             try (HttpClientResponse response = browser.get(rp.baseUri().resolve("/resource"))) {
                 assertThat(response.status(), is(Status.OK_200));
-                JsonObject claims = response.as(JsonObject.class);
-                assertThat(claims.stringValue("name").orElseThrow(), is("alice"));
-                assertThat(claims.stringValue("email").orElseThrow(), is("alice@example.org"));
-                assertThat(claims.arrayValue("roles").orElseThrow().values().stream()
-                                   .map(value -> value.asString().value()).toList(), hasItems("reader"));
-                assertThat(claims.arrayValue("scopes").orElseThrow().values().stream()
-                                   .map(value -> value.asString().value()).toList(), hasItems("resource.read"));
+                JsonObject subject = response.as(JsonObject.class);
+                assertMappedUserSubject(subject);
+                assertUserInfoSubjectMatches(subject, recordedUserInfoSubject(recorder, false));
             }
         }
     }
 
+    // Roles are application policy mapped from provider claims; OIDC does not mandate
+    // the Helidon role names "reader" and "admin" or the authorization outcome.
     @Test
     void mappedRolesAllowReaderAccessAndRejectAdminAccess() throws Exception {
         try (RelyingParty rp = new RelyingParty(adapter, IdpAdapter.ClientMode.BASIC, true, _ -> { });
@@ -190,6 +215,8 @@ abstract class OidcProviderContract {
         }
     }
 
+    // OAuth scope syntax is defined by RFC 6749 §3.3; the resource.read/resource.write
+    // authorization rules here are application-specific, not built-in protocol semantics.
     @Test
     void grantedScopesAllowReadAccessAndRejectWriteAccess() throws Exception {
         String accessToken = userTokens(IdpAdapter.ClientMode.BASIC).stringValue("access_token").orElseThrow();
@@ -200,6 +227,10 @@ abstract class OidcProviderContract {
         }
     }
 
+    // OIDC Core 1.0 §12.2 (https://openid.net/specs/openid-connect-core-1_0.html#RefreshTokenResponse):
+    // if an ID Token is refreshed, "its `sub` Claim Value MUST be the same as in the ID Token issued
+    // when the original authentication occurred". This tests a real refresh exchange and the RP's
+    // local cookie renewal; cookie re-encryption itself is a Helidon implementation detail.
     @Test
     void refreshRenewsTheCookieAndPreservesTheUserIdentity() throws Exception {
         URI tokenEndpoint = URI.create(metadata().stringValue("token_endpoint").orElseThrow());
@@ -240,6 +271,9 @@ abstract class OidcProviderContract {
         }
     }
 
+    // RFC 7009 §2.1 (https://www.rfc-editor.org/rfc/rfc7009.html#section-2.1):
+    // "the token cannot be used again after the revocation." The OP's invalid_grant response
+    // prevents local refresh; redirect and cookie disposal are Helidon session behavior.
     @Test
     void revokedRefreshTokenCannotRenewTheLocalSession() throws Exception {
         require(IdpAdapter.Capability.REFRESH_TOKEN_REVOCATION);
@@ -265,6 +299,8 @@ abstract class OidcProviderContract {
         }
     }
 
+    // Local /oidc/logout clears only this RP's browser cookie; this is not evidence that
+    // the OP session terminated under the separate RP-Initiated Logout specification.
     @Test
     void localLogoutClearsTheAuthenticationCookie() throws Exception {
         try (RelyingParty rp = new RelyingParty(adapter, IdpAdapter.ClientMode.BASIC, true, _ -> { });
@@ -280,6 +316,9 @@ abstract class OidcProviderContract {
         }
     }
 
+    // RFC 6749 §10.12 (https://www.rfc-editor.org/rfc/rfc6749.html#section-10.12):
+    // "The client MUST implement CSRF protection for its redirection URI." Altered state
+    // must not redeem an otherwise valid code from the real provider.
     @Test
     void tamperedCallbackStateIsRejectedBeforeCodeRedemption() throws Exception {
         try (RelyingParty rp = new RelyingParty(adapter, IdpAdapter.ClientMode.BASIC, true, _ -> { });
@@ -301,6 +340,8 @@ abstract class OidcProviderContract {
         }
     }
 
+    // RFC 9700 §2.1.1: "the PKCE challenge or OpenID Connect `nonce` MUST be transaction-specific".
+    // Rejecting an already consumed callback is Helidon's one-time state-cookie policy.
     @Test
     void consumedAuthorizationCallbackCannotBeReplayed() throws Exception {
         try (RelyingParty rp = new RelyingParty(adapter, IdpAdapter.ClientMode.BASIC, true, _ -> { });
@@ -312,6 +353,8 @@ abstract class OidcProviderContract {
         }
     }
 
+    // RFC 6749 §10.12: "The client MUST implement CSRF protection for its redirection URI."
+    // A callback cannot be bound to a different browser without its original state cookie.
     @Test
     void callbackWithoutTheOriginalStateCookieDoesNotCreateASession() throws Exception {
         try (RelyingParty rp = new RelyingParty(adapter, IdpAdapter.ClientMode.BASIC, true, _ -> { });
@@ -322,6 +365,9 @@ abstract class OidcProviderContract {
         }
     }
 
+    // OIDC Core 1.0 §2 (https://openid.net/specs/openid-connect-core-1_0.html#IDToken):
+    // "Clients MUST verify that the `nonce` Claim Value is equal to the value of the `nonce` parameter"
+    // sent in the Authentication Request. The OP signs a real token with the changed nonce here.
     @Test
     void providerSignedIdTokenWithTheWrongNonceDoesNotCreateASession() throws Exception {
         try (RelyingParty rp = new RelyingParty(adapter, IdpAdapter.ClientMode.BASIC, true, _ -> { });
@@ -332,6 +378,8 @@ abstract class OidcProviderContract {
         }
     }
 
+    // RFC 6749 §3.2.1: "Confidential clients or other clients issued client credentials MUST
+    // authenticate with the authorization server". The OP rejects the deliberately wrong secret.
     @Test
     void rejectedClientAuthenticationDoesNotCreateASession() throws Exception {
         try (RelyingParty rp = new RelyingParty(adapter, IdpAdapter.ClientMode.BASIC, true,
@@ -342,6 +390,9 @@ abstract class OidcProviderContract {
         }
     }
 
+    // RFC 6750 §3 (https://www.rfc-editor.org/rfc/rfc6750.html#section-3):
+    // "If the protected resource request does not include authentication credentials" the
+    // resource server must challenge it. This test checks status, not the WWW-Authenticate header.
     @Test
     void apiRejectsMissingAndUnknownBearerCredentials() throws Exception {
         try (RelyingParty rp = new RelyingParty(adapter, IdpAdapter.ClientMode.BASIC, false, _ -> { })) {
@@ -350,6 +401,9 @@ abstract class OidcProviderContract {
         }
     }
 
+    // RFC 7662 §2.2 (https://www.rfc-editor.org/rfc/rfc7662.html#section-2.2):
+    // active is "REQUIRED. Boolean indicator of whether or not the presented token is currently active."
+    // The native OP validates this token; the RP maps its returned identity.
     @Test
     void introspectionAuthenticatesAUserAccessToken() throws Exception {
         String token = userTokens(IdpAdapter.ClientMode.BASIC).stringValue("access_token").orElseThrow();
@@ -359,15 +413,25 @@ abstract class OidcProviderContract {
         }
     }
 
+    // RFC 9700 §2.3 (https://www.rfc-editor.org/rfc/rfc9700.html#section-2.3):
+    // "If it was not, the resource server MUST refuse to serve the respective request."
+    // The same token is accepted for the correct audience first, isolating the mismatch.
     @Test
     void introspectionRejectsAValidTokenForADifferentAudience() throws Exception {
         String token = userTokens(IdpAdapter.ClientMode.BASIC).stringValue("access_token").orElseThrow();
+        // Control: this exact native token authenticates when the resource audience is correct.
+        try (RelyingParty valid = new RelyingParty(adapter, IdpAdapter.ClientMode.BASIC, false, _ -> { })) {
+            assertApi(valid, token, Status.OK_200);
+        }
         try (RelyingParty rp = new RelyingParty(adapter, IdpAdapter.ClientMode.BASIC, false,
                 tenant -> changeAudience(tenant, "different-resource"))) {
             assertApi(rp, token, Status.UNAUTHORIZED_401);
         }
     }
 
+    // RFC 7662 §4 (https://www.rfc-editor.org/rfc/rfc7662.html#section-4):
+    // "the authorization server MUST determine whether or not such a revocation has taken place."
+    // This tests a real OP revocation followed by a fresh RP introspection decision.
     @Test
     void introspectionRejectsAnAccessTokenAfterNativeRevocation() throws Exception {
         require(IdpAdapter.Capability.ACCESS_TOKEN_REVOCATION);
@@ -379,6 +443,9 @@ abstract class OidcProviderContract {
         }
     }
 
+    // RFC 6749 §4.4.3 (https://www.rfc-editor.org/rfc/rfc6749.html#section-4.4.3):
+    // "the authorization server issues an access token" for an authorized client-credentials request.
+    // The real OP's introspection also accepts the resulting service token.
     @Test
     void clientCredentialsObtainsAnAccessTokenAndIntrospectionAcceptsIt() throws Exception {
         JsonObject tokenResponse = clientCredentials();
@@ -388,6 +455,10 @@ abstract class OidcProviderContract {
         }
     }
 
+    // RFC 9068 §4 (https://www.rfc-editor.org/rfc/rfc9068.html#section-4):
+    // "The resource server MUST verify that the \"typ\" header value is \"at+jwt\" or \"application/at+jwt\""
+    // only for the RFC 9068 profile. Some native OP layouts here use a separately configured
+    // CUSTOM profile; accepting such a token is not proof it conforms to RFC 9068.
     @Test
     void jwtValidationAcceptsTheProvidersSupportedTokenLayout() throws Exception {
         require(IdpAdapter.Capability.JWT_ACCESS_TOKEN);
@@ -397,16 +468,24 @@ abstract class OidcProviderContract {
         }
     }
 
+    // RFC 9700 §2.3: "If it was not, the resource server MUST refuse to serve the respective request."
+    // The same native token first authenticates with the correct resource-audience setting.
     @Test
     void jwtValidationRejectsAValidTokenForADifferentAudience() throws Exception {
         require(IdpAdapter.Capability.JWT_ACCESS_TOKEN);
         String accessToken = userTokens(IdpAdapter.ClientMode.JWT_ACCESS).stringValue("access_token").orElseThrow();
+        try (RelyingParty valid = new RelyingParty(adapter, IdpAdapter.ClientMode.JWT_ACCESS, false, _ -> { })) {
+            assertApi(valid, accessToken, Status.OK_200);
+        }
         try (RelyingParty rp = new RelyingParty(adapter, IdpAdapter.ClientMode.JWT_ACCESS, false,
                 tenant -> changeAudience(tenant, "different-resource"))) {
             assertApi(rp, accessToken, Status.UNAUTHORIZED_401);
         }
     }
 
+    // OIDC Core 1.0 §5.7 (https://openid.net/specs/openid-connect-core-1_0.html):
+    // "the only guaranteed unique identifier for a given End-User is the combination of the `iss` Claim
+    // and the `sub` Claim." Equal Helidon IDs across validation strategies are a local mapping invariant.
     @Test
     void jwtAndIntrospectionProduceTheSameIdentityForTheSameNativeToken() throws Exception {
         require(IdpAdapter.Capability.JWT_ACCESS_TOKEN);
@@ -423,6 +502,8 @@ abstract class OidcProviderContract {
         }
     }
 
+    // RFC 6749 §4.4.2: client-credentials grant_type is "REQUIRED. Value MUST be set to \"client_credentials\"."
+    // The scope string and principal mapping are provider/application-specific.
     @Test
     void jwtValidationAcceptsANativeClientCredentialsToken() throws Exception {
         require(IdpAdapter.Capability.JWT_CLIENT_CREDENTIALS);
@@ -437,6 +518,9 @@ abstract class OidcProviderContract {
         }
     }
 
+    // OIDC Core 1.0 §10.1 (https://openid.net/specs/openid-connect-core-1_0.html#Signing):
+    // "If there are multiple keys in the referenced JWK Set document, a `kid` value MUST be provided".
+    // The timing of JWKS re-fetch and retention of the previous key are Helidon cache policy.
     @Test
     void cachedJwksAcceptsTheRotatedSigningKeyAndRetainsThePreviousKey() throws Exception {
         require(IdpAdapter.Capability.SIGNING_KEY_ROTATION);
@@ -466,6 +550,9 @@ abstract class OidcProviderContract {
         }
     }
 
+    // RFC 7515 §5.2 (https://www.rfc-editor.org/rfc/rfc7515.html#section-5.2):
+    // "at least one JWS Signature value MUST successfully validate". The unmodified native
+    // token first succeeds under the very same RP configuration; only its signature is changed.
     @Test
     void jwtValidationRejectsTamperedSignatures() throws Exception {
         require(IdpAdapter.Capability.JWT_ACCESS_TOKEN);
@@ -474,32 +561,48 @@ abstract class OidcProviderContract {
         String tampered = token.substring(0, signature) + (token.charAt(signature) == 'A' ? 'B' : 'A')
                 + token.substring(signature + 1);
         try (RelyingParty rp = new RelyingParty(adapter, IdpAdapter.ClientMode.JWT_ACCESS, false, _ -> { })) {
+            assertApi(rp, token, Status.OK_200);
             assertApi(rp, tampered, Status.UNAUTHORIZED_401);
         }
     }
 
+    // RFC 9700 §2.3: if a token was not intended for this resource server,
+    // "the resource server MUST refuse to serve the respective request."
+    // Rejecting an ID Token as a Bearer access token is enforced by the configured JWT profile,
+    // even when the ID Token's (client) audience is accepted as an API audience for this test.
     @Test
     void jwtValidationRejectsAnIdTokenEvenWhenItsAudienceMatches() throws Exception {
         require(IdpAdapter.Capability.JWT_ACCESS_TOKEN);
         String idToken = userTokens(IdpAdapter.ClientMode.JWT_ACCESS).stringValue("id_token").orElseThrow();
+        assertThat(SignedJwt.parseToken(idToken).getJwt().audience().orElseThrow(),
+                   hasItems(IdpAdapter.ClientMode.JWT_ACCESS.id()));
         try (RelyingParty rp = new RelyingParty(adapter, IdpAdapter.ClientMode.JWT_ACCESS, false,
                 tenant -> changeAudience(tenant, IdpAdapter.ClientMode.JWT_ACCESS.id()))) {
             assertApi(rp, idToken, Status.UNAUTHORIZED_401);
         }
     }
 
+    // RFC 9126 §2.2 (https://www.rfc-editor.org/rfc/rfc9126.html#section-2.2):
+    // "the server MUST generate a request URI and provide it in the response" to a valid PAR.
+    // This live-OP test also completes the authorization-code browser login.
     @Test
     void pushedAuthorizationRequestCompletesTheBrowserLogin() throws Exception {
         require(IdpAdapter.Capability.PAR);
         assertBrowserAuthentication(IdpAdapter.ClientMode.PAR);
     }
 
+    // RFC 9101 §6.2 (https://www.rfc-editor.org/rfc/rfc9101.html#section-6.2):
+    // "The authorization server MUST validate the signature" of a signed Request Object.
+    // The native OP's successful browser login is the external acceptance check.
     @Test
     void signedRequestObjectCompletesTheBrowserLogin() throws Exception {
         require(IdpAdapter.Capability.JAR);
         assertBrowserAuthentication(IdpAdapter.ClientMode.JAR);
     }
 
+    // RFC 9126 §3 (https://www.rfc-editor.org/rfc/rfc9126.html#section-3):
+    // "Clients MAY use the `request` parameter as defined in JAR" to push a signed JWT.
+    // The real OP processes the combined PAR/JAR request and completes authentication.
     @Test
     void pushedAuthorizationAndSignedRequestObjectCompleteTheBrowserLoginTogether() throws Exception {
         require(IdpAdapter.Capability.PAR);
@@ -508,10 +611,27 @@ abstract class OidcProviderContract {
         assertBrowserAuthentication(IdpAdapter.ClientMode.PAR_JAR);
     }
 
+    /*
+     * Spec: OpenID Connect Core 1.0, 5.3.2, Successful UserInfo Response.
+     * https://openid.net/specs/openid-connect-core-1_0.html#UserInfoResponse
+     * Quote: "the content-type MUST be `application/jwt`."
+     */
     @Test
     void signedUserInfoCompletesTheBrowserLogin() throws Exception {
         require(IdpAdapter.Capability.SIGNED_USERINFO);
-        assertBrowserAuthentication(IdpAdapter.ClientMode.SIGNED_USERINFO);
+        URI endpoint = URI.create(metadata().stringValue("userinfo_endpoint").orElseThrow());
+        try (UserInfoRecorder recorder = new UserInfoRecorder(adapter, endpoint);
+             RelyingParty rp = new RelyingParty(adapter, IdpAdapter.ClientMode.SIGNED_USERINFO, true,
+                     tenant -> tenant.endpoints(endpoints -> endpoints.userInfoEndpointUri(recorder.uri())));
+             TestBrowser browser = new TestBrowser(adapter.webClient())) {
+            authenticate(browser, rp);
+            try (HttpClientResponse response = browser.get(rp.baseUri().resolve("/resource"))) {
+                assertThat(response.status(), is(Status.OK_200));
+                JsonObject subject = response.as(JsonObject.class);
+                assertMappedUserSubject(subject);
+                assertUserInfoSubjectMatches(subject, recordedUserInfoSubject(recorder, true));
+            }
+        }
     }
 
     @Test
@@ -520,13 +640,18 @@ abstract class OidcProviderContract {
         assertBrowserAuthentication(IdpAdapter.ClientMode.ENCRYPTED_ID_TOKEN);
     }
 
+    // RP-Initiated Logout 1.0 §2 (https://openid.net/specs/openid-connect-rpinitiated-1_0.html):
+    // "An RP requests that the OP log out the End-User by redirecting" the browser.
+    // An OP may display a confirmation page here, so an HTTP 200 alone does not prove its session ended.
     @Test
-    void rpInitiatedLogoutCompletesAtTheProviderAndClearsTheLocalSession() throws Exception {
+    void rpInitiatedLogoutReachesProviderEndpointAndClearsLocalSession() throws Exception {
         require(IdpAdapter.Capability.RP_LOGOUT);
         try (RelyingParty rp = new RelyingParty(adapter, IdpAdapter.ClientMode.BASIC, true,
                 tenant -> tenant.logout(OidcLogoutConfig.builder().endSession(end -> end.enabled(true)).buildPrototype()));
              TestBrowser browser = new TestBrowser(adapter.webClient())) {
             authenticate(browser, rp);
+            String cookieName = OidcCookieConfig.create().localAuthenticationCookieName();
+            assertThat(browser.cookieValue(cookieName).isPresent(), is(true));
             try (HttpClientResponse response = browser.post(rp.baseUri().resolve("/oidc/logout"), Parameters.empty("logout"))) {
                 assertThat(response.status(), is(Status.SEE_OTHER_303));
                 URI endSession = URI.create(response.headers().first(HeaderNames.LOCATION).orElseThrow());
@@ -535,24 +660,34 @@ abstract class OidcProviderContract {
                     assertThat(providerResponse.status(), is(Status.OK_200));
                 }
             }
+            assertThat(browser.cookieValue(cookieName), is(Optional.empty()));
             try (HttpClientResponse response = browser.get(rp.baseUri().resolve("/resource"))) {
                 assertThat(response.status(), is(Status.SEE_OTHER_303));
             }
         }
     }
 
+    // RFC 6750 §2.1 (https://www.rfc-editor.org/rfc/rfc6750.html#section-2.1):
+    // "the client uses the \"Bearer\" authentication scheme to transmit the access token."
+    // Forwarding the *same* validated token is a configured Helidon strategy, not a protocol requirement.
     @Test
     void outboundTokenPropagationPreservesTheValidatedAccessToken() throws Exception {
         assertOutbound(OidcOutboundPolicyConfig.builder().strategy(OidcOutboundStrategy.TOKEN_PROPAGATION)
                 .audience(IdpAdapter.AUDIENCE).buildPrototype(), true, false);
     }
 
+    // RFC 6749 §4.4.3 (https://www.rfc-editor.org/rfc/rfc6749.html#section-4.4.3):
+    // "the authorization server issues an access token" for a valid client-credentials request.
+    // Helidon also caches the independently acquired token as a local optimization.
     @Test
     void outboundClientCredentialsAcquiresAndCachesItsOwnAccessToken() throws Exception {
         assertOutbound(OidcOutboundPolicyConfig.builder().strategy(OidcOutboundStrategy.CLIENT_CREDENTIALS)
                 .clientCredentialsScopes(List.of("resource.read")).buildPrototype(), false, true);
     }
 
+    // RFC 8693 §2.1 (https://www.rfc-editor.org/rfc/rfc8693.html#section-2.1):
+    // `audience` is "OPTIONAL. The logical name of the target service" for token exchange.
+    // The RP requests an explicit audience and then checks its bearer token at the API.
     @Test
     void outboundTokenExchangeObtainsATokenForTheTargetAudience() throws Exception {
         require(IdpAdapter.Capability.TOKEN_EXCHANGE);
@@ -561,6 +696,9 @@ abstract class OidcProviderContract {
                 .buildPrototype(), false, false);
     }
 
+    // OIDC Core 1.0 §5.3.2 (https://openid.net/specs/openid-connect-core-1_0.html#UserInfoResponse):
+    // "If signed, the UserInfo Response MUST contain the Claims `iss` (issuer) and `aud` (audience)".
+    // This helper is invoked only for an OP that actually omits both claims from signed UserInfo.
     void assertNonconformingSignedUserInfoIsRejected() throws Exception {
         String accessToken = userTokens(IdpAdapter.ClientMode.SIGNED_USERINFO).stringValue("access_token").orElseThrow();
         WebClient client = WebClient.builder().from(adapter.webClient()).build();
@@ -590,6 +728,10 @@ abstract class OidcProviderContract {
         }
     }
 
+    // RFC 9126 §3 (https://www.rfc-editor.org/rfc/rfc9126.html#section-3):
+    // "All other request parameters" "MUST appear as claims of the JWT" when pushing `request`.
+    // The RP sends only the signed Request Object, so the OP's 400 is a tested provider limitation,
+    // not a claim that the RP's compliant JAR/PAR request must fail.
     void assertCompliantParWithJarIsRejectedByTheProvider() throws Exception {
         URI nativePar = URI.create(metadata().stringValue("pushed_authorization_request_endpoint").orElseThrow());
         try (OidcEndpointRecorder recorder = new OidcEndpointRecorder(adapter, nativePar);
@@ -609,6 +751,9 @@ abstract class OidcProviderContract {
         }
     }
 
+    // RFC 6749 §5.2 (https://www.rfc-editor.org/rfc/rfc6749.html#section-5.2) defines token errors.
+    // A revoked refresh token yielding an OP 500 here is provider-specific; retaining the already
+    // authenticated (but not renewed) local session is Helidon fallback policy, not a spec MUST.
     void assertRefreshRevocationServerErrorDoesNotRenewTheSession() throws Exception {
         URI tokenEndpoint = URI.create(metadata().stringValue("token_endpoint").orElseThrow());
         try (OidcEndpointRecorder recorder = new OidcEndpointRecorder(adapter, tokenEndpoint);
@@ -694,6 +839,43 @@ abstract class OidcProviderContract {
         }
     }
 
+    private void assertMappedUserSubject(JsonObject subject) {
+        // A browser subject is keyed by the ID Token's issuer and sub, not just by the display name.
+        String issuerPrefix = "oidc-sub:" + Base64.getUrlEncoder().withoutPadding()
+                .encodeToString(adapter.issuer().toString().getBytes(StandardCharsets.UTF_8)) + ".";
+        String id = subject.stringValue("id").orElseThrow();
+        assertThat(id, startsWith(issuerPrefix));
+        assertThat(id.length() > issuerPrefix.length(), is(true));
+        assertThat(subject.stringValue("name").orElseThrow(), is("alice"));
+        assertThat(subject.stringValue("email").orElseThrow(), is("alice@example.org"));
+        assertThat(subject.arrayValue("roles").orElseThrow().values().stream()
+                           .map(value -> value.asString().value()).toList(), hasItems("reader"));
+        assertThat(subject.arrayValue("scopes").orElseThrow().values().stream()
+                           .map(value -> value.asString().value()).toList(), hasItems("resource.read"));
+        assertThat(subject.stringValue("access_token").orElseThrow().isBlank(), is(false));
+    }
+
+    private String recordedUserInfoSubject(UserInfoRecorder recorder, boolean signed) {
+        UserInfoRecorder.Exchange exchange = recorder.exchange();
+        assertThat(exchange.status(), is(Status.OK_200));
+        assertThat(exchange.authorization(), startsWith("Bearer "));
+        assertThat(exchange.contentType(), startsWith(signed ? "application/jwt" : "application/json"));
+        if (signed) {
+            var jwt = SignedJwt.parseToken(exchange.body()).getJwt();
+            assertThat(jwt.algorithm().orElseThrow(), is("RS256"));
+            assertThat(jwt.issuer().orElseThrow(), is(adapter.issuer().toString()));
+            assertThat(jwt.audience().orElseThrow(), hasItems(IdpAdapter.ClientMode.SIGNED_USERINFO.id()));
+            return jwt.subject().orElseThrow();
+        }
+        return JsonParser.create(exchange.body()).readJsonObject().stringValue("sub").orElseThrow();
+    }
+
+    private static void assertUserInfoSubjectMatches(JsonObject subject, String userInfoSubject) {
+        String encoded = Base64.getUrlEncoder().withoutPadding()
+                .encodeToString(userInfoSubject.getBytes(StandardCharsets.UTF_8));
+        assertThat(subject.stringValue("id").orElseThrow(), endsWith("." + encoded));
+    }
+
     JsonObject userTokens(IdpAdapter.ClientMode mode) throws Exception {
         String verifier = UUID.randomUUID().toString().replace("-", "") + UUID.randomUUID().toString().replace("-", "");
         String challenge = Base64.getUrlEncoder().withoutPadding().encodeToString(
@@ -736,7 +918,7 @@ abstract class OidcProviderContract {
         }
     }
 
-    private JsonObject metadata() {
+    final JsonObject metadata() {
         WebClient client = WebClient.builder().from(adapter.webClient()).build();
         try (HttpClientResponse response = client.get().uri(URI.create(adapter.issuer() + "/.well-known/openid-configuration"))
                 .request()) {
@@ -851,5 +1033,58 @@ abstract class OidcProviderContract {
                        response.status(), is(Status.SEE_OTHER_303));
         }
         return callback;
+    }
+
+    private static final class UserInfoRecorder implements AutoCloseable {
+        private final List<Exchange> exchanges = new CopyOnWriteArrayList<>();
+        private final WebClient client;
+        private final WebServer server;
+
+        private UserInfoRecorder(IdpAdapter adapter, URI nativeEndpoint) {
+            client = WebClient.builder().from(adapter.webClient()).servicesDiscoverServices(false).build();
+            try {
+                server = WebServer.builder().host("127.0.0.1").port(0).tls(IdpResources.serverTls())
+                        .routing(routing -> routing.get("/userinfo", (request, response) -> {
+                            String authorization = request.headers().first(HeaderNames.AUTHORIZATION).orElseThrow();
+                            String accept = request.headers().first(HeaderNames.ACCEPT).orElseThrow();
+                            try (HttpClientResponse nativeResponse = client.get().uri(nativeEndpoint)
+                                    .followRedirects(false)
+                                    .header(HeaderNames.AUTHORIZATION, authorization)
+                                    .header(HeaderNames.ACCEPT, accept).request()) {
+                                String body = nativeResponse.as(String.class);
+                                String contentType = nativeResponse.headers().first(HeaderNames.CONTENT_TYPE).orElse("");
+                                exchanges.add(new Exchange(authorization, nativeResponse.status(), contentType, body));
+                                if (!contentType.isEmpty()) {
+                                    response.headers().set(HeaderNames.CONTENT_TYPE, contentType);
+                                }
+                                response.status(nativeResponse.status()).send(body);
+                            }
+                        })).build().start();
+            } catch (RuntimeException e) {
+                client.closeResource();
+                throw e;
+            }
+        }
+
+        private URI uri() {
+            return URI.create("https://localhost:" + server.port() + "/userinfo");
+        }
+
+        private Exchange exchange() {
+            assertThat("Expected exactly one UserInfo HTTP exchange", exchanges, hasSize(1));
+            return exchanges.getFirst();
+        }
+
+        @Override
+        public void close() {
+            try {
+                server.stop();
+            } finally {
+                client.closeResource();
+            }
+        }
+
+        private record Exchange(String authorization, Status status, String contentType, String body) {
+        }
     }
 }

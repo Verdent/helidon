@@ -32,6 +32,9 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 class OidcIssuerUniquenessConfigTest {
     private static final String ISSUER = "https://identity.oraclecloud.com/";
 
+    // RFC 9207 §4 (https://www.rfc-editor.org/rfc/rfc9207.html#section-4):
+    // clients "MUST NOT allow multiple authorization servers to use the same issuer identifier."
+    // The default refuses to treat two distinct authorization-endpoint origins as one issuer.
     @Test
     void defaultRejectsDistinctAuthorizationServersSharingIssuer() {
         assertThat(OidcProviderConfig.create().issuerUniquenessValidationEnabled(), is(true));
@@ -42,6 +45,10 @@ class OidcIssuerUniquenessConfigTest {
         assertThat(failure.getMessage(), containsString("must use matching authorization-endpoint-uri"));
     }
 
+    // The explicit compatibility exception below is NOT RFC 9207's multi-AS default.
+    // RFC 9700 §4.4.2.2 (https://www.rfc-editor.org/rfc/rfc9700.html#section-4.4.2.2):
+    // "clients MUST use a distinct redirection URI for each issuer they interact with."
+    // Here different callbacks also isolate the nonstandard *same*-issuer setup.
     @Test
     void explicitExceptionRequiresDistinctCallbackAndPinnedEndpoints() {
         OidcProviderConfig config = provider(false,
@@ -57,6 +64,8 @@ class OidcIssuerUniquenessConfigTest {
         assertThat(samePath.getMessage(), containsString("distinct redirection-endpoint-uri"));
     }
 
+    // Ignoring differences solely in the callback query is Helidon's stricter isolation
+    // policy for that explicitly enabled, nonstandard same-issuer deployment.
     @Test
     void explicitExceptionDoesNotTurnQueryOnlyDifferencesIntoDistinctCallbacks() {
         IllegalArgumentException failure = assertThrows(IllegalArgumentException.class,
@@ -66,6 +75,8 @@ class OidcIssuerUniquenessConfigTest {
         assertThat(failure.getMessage(), containsString("distinct redirection-endpoint-uri"));
     }
 
+    // Local fail-closed configuration validation: even with issuer uniqueness relaxed,
+    // never pair an honest authorization endpoint with another server's token endpoint.
     @Test
     void explicitExceptionRejectsHonestAuthorizationWithWrongTokenEndpoint() {
         OidcTenantConfig honest = tenant("https://idcs-a.example", "/oidc/a");

@@ -85,6 +85,9 @@ class OidcJweAlgorithmConfigTest {
         jwksUri = OidcJweAlgorithmConfigTest.class.getClassLoader().getResource("oidc-next-verify-public-jwk.json").toURI();
     }
 
+    // OIDC Core 1.0 §3.1.3.7(1) (https://openid.net/specs/openid-connect-core-1_0.html#IDTokenValidation):
+    // "If the ID Token is encrypted, decrypt it using the keys and algorithms that the Client specified".
+    // Rejecting an incomplete *enabled* tenant configuration is Helidon's fail-fast policy.
     @TestFactory
     Stream<DynamicTest> requiredIdTokenEncryptionNeedsDecryptionKey() {
         return invalidConfigurations("id-token.encryption-required", "", "true",
@@ -109,6 +112,8 @@ class OidcJweAlgorithmConfigTest {
         }
     }
 
+    // The unsupported key-management and content-encryption lists below are Helidon's
+    // implementation-supported subset, not algorithms that OIDC forbids other RPs to use.
     @TestFactory
     Stream<DynamicTest> idTokenRejectsUnsupportedKeyManagementAlgorithms() {
         return unsupportedKeyManagementAlgorithms().flatMap(algorithm -> invalidConfigurations(
@@ -141,6 +146,9 @@ class OidcJweAlgorithmConfigTest {
                         .decryptionJwk(ResourceConfig.builder().contentPlain(PRIVATE_KEYS).buildPrototype())))));
     }
 
+    // OIDC Core 1.0 §5.3.2 (https://openid.net/specs/openid-connect-core-1_0.html#UserInfoResponse):
+    // "If both signing and encryption are requested, the response MUST be signed then encrypted".
+    // Also check that every locally supported JWE combination actually decrypts for both ID Token and UserInfo.
     @TestFactory
     Stream<DynamicTest> supportedConfigurationsProcessEncryptedResponses() {
         return Arrays.stream(EncryptedJwt.SupportedAlgorithm.values())
@@ -151,6 +159,8 @@ class OidcJweAlgorithmConfigTest {
                                                                                          encryption.toString()))));
     }
 
+    // OIDC Dynamic Client Registration 1.0 §2 (https://openid.net/specs/openid-connect-registration-1_0.html):
+    // "the default `userinfo_encrypted_response_enc` value is `A128CBC-HS256`" when the algorithm is set.
     @TestFactory
     Stream<DynamicTest> omittedUserInfoEncUsesRegistrationDefault() {
         return Arrays.stream(EncryptedJwt.SupportedAlgorithm.values())

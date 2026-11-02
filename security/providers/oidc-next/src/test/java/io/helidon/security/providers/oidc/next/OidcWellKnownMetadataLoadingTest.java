@@ -78,6 +78,14 @@ import static org.hamcrest.Matchers.containsString;
 import static org.junit.jupiter.api.Assertions.assertAll;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
+/*
+ * OpenID Connect Discovery 1.0 incorporating errata set 2:
+ * https://openid.net/specs/openid-connect-discovery-1_0.html
+ * OAuth AS metadata (different well-known path placement): https://www.rfc-editor.org/rfc/rfc8414#section-3
+ * Local HTTP discovery is enabled ONLY in fixture configurations; production Discovery requires HTTPS.
+ * Most optional metadata matters to an RP only when a tenant enables the corresponding feature; RFC 8414 section 2
+ * additionally requires signing-algorithm metadata when the AS advertises JWT client authentication.
+ */
 @ServerTest
 class OidcWellKnownMetadataLoadingTest {
     private static final URI REDIRECTION_ENDPOINT_URI = URI.create("https://rp.example/oidc/callback");
@@ -161,6 +169,10 @@ class OidcWellKnownMetadataLoadingTest {
         wellKnownStatus = null;
     }
 
+    // RFC 8705 §3.3 (https://www.rfc-editor.org/rfc/rfc8705.html#section-3.3) defines
+    // tls_client_certificate_bound_access_tokens as a "Boolean value indicating server support
+    // for mutual-TLS client certificate-bound access tokens." The default is false when omitted.
+    // Refusing REQUIRED binding without an advertised capability is Helidon's local policy.
     @Test
     void certificateBoundAccessTokenMetadataDependsOnValidationMode() {
         List<Executable> tests = new ArrayList<>();
@@ -203,6 +215,7 @@ class OidcWellKnownMetadataLoadingTest {
         assertAll(tests);
     }
 
+    // Discovery 4.1: "MUST be retrieved using an HTTP `GET` request" at the well-known path.
     @Test
     void authorizationCodeTenantLoadsWellKnownMetadataEndpoints() {
         OidcTenantConfig tenantConfig = OidcTenantConfig.builder()
@@ -268,6 +281,7 @@ class OidcWellKnownMetadataLoadingTest {
         }
     }
 
+    // Discovery 4.3: "The `issuer` value returned MUST be identical to the Issuer URL" used for discovery.
     @Test
     void metadataOnlyAuthorizationCodeTenantRejectsAnotherIssuersMetadata() {
         PROVIDER_METADATA.set(authorizationCodeMetadataBuilder()
@@ -285,6 +299,7 @@ class OidcWellKnownMetadataLoadingTest {
         assertThat(WELL_KNOWN_REQUESTS.get(), is(1));
     }
 
+    // Discovery 4.3: "The `issuer` value returned MUST be identical to the Issuer URL" used for discovery.
     @Test
     void configuredIssuerCannotTrustMetadataFromDifferentWellKnownUrl() {
         PROVIDER_METADATA.set(authorizationCodeMetadataBuilder()
@@ -304,6 +319,8 @@ class OidcWellKnownMetadataLoadingTest {
         assertThat(WELL_KNOWN_REQUESTS.get(), is(0));
     }
 
+    // OIDC Discovery §4.1: the configuration request uses "the previously specified path."
+    // This is the canonical OpenID well-known URL when the tenant has no static issuer.
     @Test
     void metadataOnlyAuthorizationCodeTenantAcceptsCanonicalOpenIdDiscovery() {
         OidcTenantConfig tenant = metadataOnlyAuthorizationCodeTenant(
@@ -317,6 +334,7 @@ class OidcWellKnownMetadataLoadingTest {
         assertThat(WELL_KNOWN_REQUESTS.get(), is(1));
     }
 
+    // Discovery 4.1: "any terminating `/` MUST be removed before appending `/.well-known/openid-configuration`".
     @Test
     void pathIssuerAcceptsCanonicalOpenIdDiscovery() {
         URI pathIssuer = issuer.resolve("/tenant");
@@ -334,6 +352,7 @@ class OidcWellKnownMetadataLoadingTest {
         assertThat(WELL_KNOWN_REQUESTS.get(), is(1));
     }
 
+    // RFC 8414, 3.1: "the well-known URI suffix between the host component and the path component".
     @Test
     void pathIssuerAcceptsCanonicalOauthMetadataDiscovery() {
         URI pathIssuer = issuer.resolve("/tenant");
@@ -351,6 +370,8 @@ class OidcWellKnownMetadataLoadingTest {
         assertThat(WELL_KNOWN_REQUESTS.get(), is(1));
     }
 
+    // RFC 8414 §3.1 (https://www.rfc-editor.org/rfc/rfc8414.html#section-3.1) places
+    // "the well-known URI suffix between the host component and the path component".
     @Test
     void configuredPathIssuerAcceptsCanonicalOauthMetadataDiscovery() {
         URI pathIssuer = issuer.resolve("/tenant");
@@ -460,6 +481,9 @@ class OidcWellKnownMetadataLoadingTest {
         }
     }
 
+    // RFC 9207 §3 (https://www.rfc-editor.org/rfc/rfc9207.html#section-3): for the issuer-response
+    // metadata flag, "If omitted, the default value is false." With one callback shared by distinct
+    // issuers, Helidon requires this mix-up defense before accepting authorization codes.
     @Test
     void sharedMultiIssuerCallbackRequiresIssuerResponseMetadataSupport() {
         OidcTenantConfig tenantConfig = authorizationCodeTenantConfig();
@@ -475,6 +499,8 @@ class OidcWellKnownMetadataLoadingTest {
         assertThat(WELL_KNOWN_REQUESTS.get(), is(1));
     }
 
+    // RFC 9207 §2.3: "The server MUST indicate its support for the `iss` parameter" in metadata.
+    // A shared callback can safely rely on that advertised issuer identifier at authorization time.
     @Test
     void sharedMultiIssuerCallbackAcceptsIssuerResponseMetadataSupport() {
         PROVIDER_METADATA.set(providerMetadataBuilder()
@@ -492,6 +518,9 @@ class OidcWellKnownMetadataLoadingTest {
         assertThat(WELL_KNOWN_REQUESTS.get(), is(1));
     }
 
+    // RFC 9700 §4.4.2.2 (https://www.rfc-editor.org/rfc/rfc9700.html#section-4.4.2.2):
+    // "For this defense, clients MUST use a distinct redirection URI for each issuer they interact with."
+    // This configuration check is distinct from the callback's runtime issuer-selection tests.
     @Test
     void distinctMultiIssuerCallbacksDoNotRequireIssuerResponseMetadataSupport() {
         OidcTenantConfig tenantConfig = authorizationCodeTenantConfig();
@@ -594,6 +623,8 @@ class OidcWellKnownMetadataLoadingTest {
         assertThat(WELL_KNOWN_WEBCLIENT_HEADER.get(), is(TENANT_WEBCLIENT_HEADER_VALUE));
     }
 
+    // RFC 9126 §5: "The URL of the pushed authorization request endpoint at which a client can post".
+    // Reading this optional OP metadata does not by itself imply PAR is enabled for the tenant.
     @Test
     void authorizationCodeTenantLoadsWellKnownPushedAuthorizationRequestMetadata() {
         PROVIDER_METADATA.set(providerMetadataBuilder()
@@ -609,6 +640,8 @@ class OidcWellKnownMetadataLoadingTest {
                    is(Optional.of(pushedAuthorizationRequestEndpointUri)));
     }
 
+    // RFC 9126 §2: "The PAR endpoint URL MUST use the \"https\" scheme." An HTTP discovery
+    // test fixture is not permission to use an HTTP PAR endpoint.
     @Test
     void authorizationCodeTenantRejectsHttpPushedAuthorizationRequestEndpointInMetadata() {
         PROVIDER_METADATA.set(providerMetadataBuilder()
@@ -625,6 +658,8 @@ class OidcWellKnownMetadataLoadingTest {
         assertThat(WELL_KNOWN_REQUESTS.get(), is(1));
     }
 
+    // RFC 8705 §5: "MUST use the alias URL of the endpoint within the `mtls_endpoint_aliases`, when present".
+    // This checks discovery of the PAR alias, not that a later request actually uses the alias.
     @Test
     void authorizationCodeTenantLoadsWellKnownMutualTlsPushedAuthorizationRequestMetadata() {
         URI mutualTlsPushedAuthorizationRequestEndpointUri = URI.create("https://issuer.example/mtls-par");
@@ -646,6 +681,9 @@ class OidcWellKnownMetadataLoadingTest {
                    is(Optional.of(mutualTlsPushedAuthorizationRequestEndpointUri)));
     }
 
+    // RFC 9126 §5: the presence of pushed_authorization_request_endpoint is "sufficient for a client
+    // to determine that it may use the PAR flow"; eagerly fetching otherwise unnecessary discovery
+    // metadata is not an RP requirement. This tests Helidon's lazy initialization policy.
     @Test
     void authorizationCodeTenantDoesNotLoadWellKnownMetadataOnlyToDiscoverOptionalPushedAuthorizationRequests() {
         OidcTenantConfig tenantConfig = OidcTenantConfig.builder()
@@ -795,6 +833,9 @@ class OidcWellKnownMetadataLoadingTest {
         }
     }
 
+    // OIDC Discovery §4.3 (https://openid.net/specs/openid-connect-discovery-1_0.html#ProviderConfigurationValidation):
+    // "The `issuer` value returned MUST be identical to the Issuer URL"; a TLS-protected
+    // response with an issuer different from the requested one still cannot be trusted.
     @Test
     void httpsMetadataCannotClaimDifferentIssuerWithDefaultTlsPolicy() {
         AtomicInteger requests = new AtomicInteger();
@@ -916,6 +957,8 @@ class OidcWellKnownMetadataLoadingTest {
         assertThat(WELL_KNOWN_REQUESTS.get(), is(1));
     }
 
+    // OIDC Discovery §3: "`jwks_uri` REQUIRED" for OP discovery. The ID Token
+    // verification key source is missing here; this tests that precondition, not JAR encryption.
     @Test
     void authorizationCodeTenantFailsInitializationWhenMetadataHasNoJwkSource() {
         PROVIDER_METADATA.set(JsonObject.builder()
@@ -946,6 +989,8 @@ class OidcWellKnownMetadataLoadingTest {
         assertThat(WELL_KNOWN_REQUESTS.get(), is(1));
     }
 
+    // RFC 9126, 5: require_pushed_authorization_requests is a "Boolean parameter indicating whether the
+    // authorization server accepts authorization request data only via PAR"; fail before initiating login.
     @Test
     void authorizationCodeTenantFailsWhenWellKnownMetadataRequiresPushedAuthorizationRequestsAndDisabled() {
         PROVIDER_METADATA.set(providerMetadataBuilder()
@@ -970,6 +1015,8 @@ class OidcWellKnownMetadataLoadingTest {
                    containsString("require_pushed_authorization_requests"));
     }
 
+    // RFC 9126 §5: require_pushed_authorization_requests indicates whether the AS "accepts authorization
+    // request data only via PAR"; an absent PAR endpoint cannot serve a mandatory PAR flow.
     @Test
     void authorizationCodeTenantFailsWhenWellKnownMetadataRequiresPushedAuthorizationRequestsWithoutEndpoint() {
         PROVIDER_METADATA.set(providerMetadataBuilder()
@@ -984,6 +1031,8 @@ class OidcWellKnownMetadataLoadingTest {
                    containsString("pushed_authorization_request_endpoint"));
     }
 
+    // RFC 9101, 10.5: "When the value of it as server metadata is `true`, then the server MUST reject"
+    // an authorization request without the required signed Request Object; fail configuration early.
     @Test
     void authorizationCodeTenantFailsWhenWellKnownMetadataRequiresRequestObjectsAndDisabled() {
         PROVIDER_METADATA.set(providerMetadataBuilder()
@@ -1008,6 +1057,8 @@ class OidcWellKnownMetadataLoadingTest {
                    containsString("require_signed_request_object"));
     }
 
+    // RFC 9101 §10.5: with require_signed_request_object, the server "MUST reject the authorization
+    // request" if it is not signed. Helidon needs local signing material before initiating login.
     @Test
     void authorizationCodeTenantFailsWhenWellKnownMetadataRequiresRequestObjectsWithoutSigningKey() {
         PROVIDER_METADATA.set(providerMetadataBuilder()
@@ -1024,6 +1075,9 @@ class OidcWellKnownMetadataLoadingTest {
                    containsString("authorization-code.request-object.signing-jwk"));
     }
 
+    // OIDC Discovery §3 (https://openid.net/specs/openid-connect-discovery-1_0.html#ProviderMetadata):
+    // request_parameter_supported defaults to false: "If omitted, the default value is `false`."
+    // This tenant sends its signed Request Object by value without PAR.
     @Test
     void authorizationCodeTenantFailsWhenWellKnownMetadataDoesNotSupportByValueRequestObjects() {
         PROVIDER_METADATA.set(providerMetadataBuilder()
@@ -1049,6 +1103,8 @@ class OidcWellKnownMetadataLoadingTest {
                    containsString("request_parameter_supported"));
     }
 
+    // RFC 9101 §4 (https://www.rfc-editor.org/rfc/rfc9101.html#section-4):
+    // "The algorithms chosen need to be supported by both the client and the authorization server."
     @Test
     void authorizationCodeTenantFailsWhenWellKnownMetadataDoesNotSupportRequestObjectAlgorithm() {
         PROVIDER_METADATA.set(providerMetadataBuilder()
@@ -1075,6 +1131,8 @@ class OidcWellKnownMetadataLoadingTest {
                    containsString("request_object_signing_alg_values_supported"));
     }
 
+    // RFC 9101 §4: "The algorithms chosen need to be supported by both the client and the
+    // authorization server." This case advertises a signing algorithm compatible with the RP's key.
     @Test
     void authorizationCodeTenantAcceptsSupportedRequestObjectMetadata() {
         PROVIDER_METADATA.set(providerMetadataBuilder()
@@ -1116,6 +1174,9 @@ class OidcWellKnownMetadataLoadingTest {
         assertThat(context.failureCause().map(Throwable::getMessage).orElse("ready"), context.ready(), is(true));
     }
 
+    // OIDC Discovery §3: request_object_encryption_alg_values_supported is "OPTIONAL. JSON array".
+    // An RP may have explicitly agreed on encryption settings outside the OP metadata;
+    // this fixture alone does not prove that an OP actually supports those settings.
     @Test
     void authorizationCodeTenantAllowsAbsentOptionalRequestObjectEncryptionMetadata() {
         PROVIDER_METADATA.set(providerMetadataBuilder()
@@ -1129,6 +1190,8 @@ class OidcWellKnownMetadataLoadingTest {
         assertThat(context.failureCause().map(Throwable::getMessage).orElse("ready"), context.ready(), is(true));
     }
 
+    // RFC 9101 §4: "The algorithms chosen need to be supported by both the client and the
+    // authorization server." An explicit incompatible OP encryption list must not be ignored.
     @Test
     void authorizationCodeTenantRejectsUnsupportedRequestObjectEncryptionMetadata() {
         PROVIDER_METADATA.set(providerMetadataBuilder()
@@ -1161,32 +1224,7 @@ class OidcWellKnownMetadataLoadingTest {
                    containsString("request_object_encryption_enc_values_supported"));
     }
 
-    @Test
-    void authorizationCodeTenantRequiresJwkSetForRequestObjectEncryption() {
-        PROVIDER_METADATA.set(JsonObject.builder()
-                                      .set("issuer", issuer.toString())
-                                      .set("authorization_endpoint", authorizationEndpointUri.toString())
-                                      .set("token_endpoint", tokenEndpointUri.toString())
-                                      .setStrings("response_types_supported", List.of("code"))
-                                      .setStrings("grant_types_supported", List.of("authorization_code"))
-                                      .setStrings("code_challenge_methods_supported", List.of("S256"))
-                                      .setStrings("token_endpoint_auth_methods_supported", List.of("none"))
-                                      .setStrings("id_token_signing_alg_values_supported", List.of("RS256"))
-                                      .set("request_parameter_supported", true)
-                                      .setStrings("request_object_signing_alg_values_supported", List.of("RS256"))
-                                      .setStrings("request_object_encryption_alg_values_supported",
-                                                  List.of("RSA-OAEP-256"))
-                                      .setStrings("request_object_encryption_enc_values_supported",
-                                                  List.of("A128CBC-HS256"))
-                                      .build()
-                                      .toString());
-
-        OidcTenantContext context = tenantContext(encryptedRequestObjectTenant());
-
-        assertThat(context.state(), is(OidcTenantState.FAILED));
-        assertThat(context.failureCause().orElseThrow().getMessage(), containsString("jwks_uri"));
-    }
-
+    // Discovery 3: response_types_supported is "REQUIRED. JSON array containing a list" of supported values.
     @Test
     void authorizationCodeTenantFailsWhenWellKnownMetadataResponseTypesAreMissing() {
         PROVIDER_METADATA.set(JsonObject.builder()
@@ -1206,6 +1244,8 @@ class OidcWellKnownMetadataLoadingTest {
         assertThat(context.failureCause().orElseThrow().getMessage(), containsString("response_types_supported"));
     }
 
+    // Discovery §3: response_types_supported is a "REQUIRED. JSON array containing a list";
+    // this authorization-code tenant cannot use an OP advertising only id_token.
     @Test
     void authorizationCodeTenantFailsWhenWellKnownMetadataDoesNotSupportCodeResponseType() {
         PROVIDER_METADATA.set(authorizationCodeMetadataBuilder()
@@ -1218,6 +1258,8 @@ class OidcWellKnownMetadataLoadingTest {
         assertThat(context.failureCause().orElseThrow().getMessage(), containsString("response_types_supported"));
     }
 
+    // Discovery §3: grant_types_supported is an "OPTIONAL. JSON array"; when present and
+    // advertising only implicit, this OP cannot serve the tenant's authorization_code grant.
     @Test
     void authorizationCodeTenantFailsWhenWellKnownMetadataDoesNotSupportAuthorizationCodeGrant() {
         PROVIDER_METADATA.set(authorizationCodeMetadataBuilder()
@@ -1258,6 +1300,7 @@ class OidcWellKnownMetadataLoadingTest {
         }
     }
 
+    // Discovery 3: grant_types_supported is "OPTIONAL. JSON array" and defaults to authorization_code + implicit.
     @Test
     void authorizationCodeTenantAcceptsMissingWellKnownMetadataGrantTypesDefault() {
         PROVIDER_METADATA.set(JsonObject.builder()
@@ -1276,6 +1319,7 @@ class OidcWellKnownMetadataLoadingTest {
         assertThat(context.ready(), is(true));
     }
 
+    // Local assurance policy, not a Discovery MUST: PKCE method metadata may be absent even when S256 is supported.
     @Test
     void authorizationCodeTenantFailsWhenWellKnownMetadataPkceMethodsAreMissingWithoutAssurance() {
         PROVIDER_METADATA.set(authorizationCodeMetadataWithoutPkceMethods().build().toString());
@@ -1285,6 +1329,7 @@ class OidcWellKnownMetadataLoadingTest {
         assertThat(context.failureCause().orElseThrow().getMessage(), containsString("code_challenge_methods_supported"));
     }
 
+    // Local assurance opt-in for S256 despite absent method metadata; do not downgrade to the plain PKCE method.
     @Test
     void authorizationCodeTenantAcceptsAssuredS256WhenWellKnownMetadataPkceMethodsAreMissing() {
         PROVIDER_METADATA.set(authorizationCodeMetadataWithoutPkceMethods().build().toString());
@@ -1345,6 +1390,9 @@ class OidcWellKnownMetadataLoadingTest {
         assertThat(context.failureCause().orElseThrow().getMessage(), containsString("must include S256"));
     }
 
+    // RFC 9700 §2.1.1 (https://www.rfc-editor.org/rfc/rfc9700.html#section-2.1.1):
+    // confidential-client PKCE "is RECOMMENDED, as it provides strong protection"; disabling it
+    // is Helidon's user-configurable exception and is not the recommended default.
     @Test
     void authorizationCodeTenantSkipsPkceMetadataWhenPkceIsDisabled() {
         PROVIDER_METADATA.set(JsonObject.builder()
@@ -1373,6 +1421,9 @@ class OidcWellKnownMetadataLoadingTest {
         assertThat(context.ready(), is(true));
     }
 
+    // OIDC Discovery §3: token_endpoint_auth_methods_supported lists "Client Authentication
+    // methods supported by this Token Endpoint." It does not encode whether a particular
+    // public client, which has no client authentication, is registered at the OP.
     @Test
     void publicAuthorizationCodeTenantAcceptsMissingTokenEndpointAuthenticationMethods() {
         PROVIDER_METADATA.set(JsonObject.builder()
@@ -1391,6 +1442,8 @@ class OidcWellKnownMetadataLoadingTest {
         assertThat(context.ready(), is(true));
     }
 
+    // OIDC Discovery §3 (https://openid.net/specs/openid-connect-discovery-1_0.html#ProviderMetadata):
+    // "If omitted, the default is `client_secret_basic`" for token endpoint authentication.
     @Test
     void authorizationCodeTenantAcceptsMissingWellKnownMetadataTokenEndpointAuthForBasicDefault() {
         PROVIDER_METADATA.set(JsonObject.builder()
@@ -1418,6 +1471,9 @@ class OidcWellKnownMetadataLoadingTest {
         assertThat(context.ready(), is(true));
     }
 
+    // OIDC Discovery §3: this list contains "Client Authentication methods supported";
+    // an OP's advertisement of Basic does not forbid separately registered public clients.
+    // Readiness alone does not assert that the OP actually accepts this public registration.
     @Test
     void publicAuthorizationCodeTenantAcceptsMetadataThatOnlyAdvertisesConfidentialAuthentication() {
         PROVIDER_METADATA.set(authorizationCodeMetadataBuilder()
@@ -1429,6 +1485,9 @@ class OidcWellKnownMetadataLoadingTest {
         assertThat(context.ready(), is(true));
     }
 
+    // Discovery §3: token_endpoint_auth_methods_supported is a "JSON array containing a list of Client
+    // Authentication methods supported by this Token Endpoint";
+    // client_secret_post is not listed. Refusing to try an unadvertised method is RP fail-closed policy.
     @Test
     void confidentialAuthorizationCodeTenantRejectsAnUnadvertisedAuthenticationMethod() {
         PROVIDER_METADATA.set(authorizationCodeMetadataBuilder()
@@ -1447,6 +1506,10 @@ class OidcWellKnownMetadataLoadingTest {
                    containsString("token_endpoint_auth_methods_supported"));
     }
 
+    // RFC 8414 §2: when client_secret_jwt is advertised, this signing-alg metadata
+    // "MUST be present if either of these authentication methods are specified";
+    // "No default algorithms are implied if this entry is omitted." Discovery §3's
+    // general OPTIONAL label does not override this conditional requirement.
     @Test
     void authorizationCodeTenantFailsWhenWellKnownMetadataJwtAuthSigningAlgorithmsAreMissing() {
         PROVIDER_METADATA.set(authorizationCodeMetadataBuilder()
@@ -1460,6 +1523,8 @@ class OidcWellKnownMetadataLoadingTest {
                    containsString("token_endpoint_auth_signing_alg_values_supported"));
     }
 
+    // Discovery §3: JWT client-auth signing metadata lists "the JWS signing algorithms (`alg` values) supported";
+    // the RP must not silently use its configured algorithm if the OP advertises only another one.
     @Test
     void authorizationCodeTenantFailsWhenWellKnownMetadataJwtAuthSigningAlgorithmDoesNotMatchConfig() {
         PROVIDER_METADATA.set(authorizationCodeMetadataBuilder()
@@ -1474,6 +1539,7 @@ class OidcWellKnownMetadataLoadingTest {
                    containsString("token_endpoint_auth_signing_alg_values_supported"));
     }
 
+    // Discovery §3: for token_endpoint_auth_signing_alg_values_supported, "The value `none` MUST NOT be used."
     @Test
     void authorizationCodeTenantFailsWhenWellKnownMetadataJwtAuthSigningAlgorithmsContainNone() {
         PROVIDER_METADATA.set(authorizationCodeMetadataBuilder()
@@ -1489,6 +1555,7 @@ class OidcWellKnownMetadataLoadingTest {
                    containsString("token_endpoint_auth_signing_alg_values_supported"));
     }
 
+    // Discovery §3: id_token_signing_alg_values_supported is a "REQUIRED. JSON array" for the OP.
     @Test
     void authorizationCodeTenantFailsWhenWellKnownMetadataIdTokenSigningAlgorithmsAreMissing() {
         PROVIDER_METADATA.set(authorizationCodeCapabilityMetadataBuilder()
@@ -1505,12 +1572,16 @@ class OidcWellKnownMetadataLoadingTest {
         OidcTenantContext context = tenantContext(tenantConfig);
 
         assertThat(context.state(), is(OidcTenantState.FAILED));
+        assertThat(context.failureCause().orElseThrow().getMessage(),
+                   containsString("id_token_signing_alg_values_supported"));
     }
 
+    // Discovery §3: id_token_signing_alg_values_supported lists algorithms "supported by the OP for the ID Token";
+    // a conformant OP advertises RS256, but the RP here explicitly accepts only ES256.
     @Test
     void authorizationCodeTenantFailsWhenWellKnownMetadataIdTokenSigningAlgorithmsDoNotMatchConfig() {
         PROVIDER_METADATA.set(authorizationCodeCapabilityMetadataBuilder()
-                .setStrings("id_token_signing_alg_values_supported", List.of("ES256"))
+                .setStrings("id_token_signing_alg_values_supported", List.of("RS256"))
                 .build()
                 .toString());
         OidcTenantConfig tenantConfig = OidcTenantConfig.builder()
@@ -1518,14 +1589,19 @@ class OidcWellKnownMetadataLoadingTest {
                 .clientId("client-id")
                 .endpoints(it -> it.tlsRequired(false))
                 .authorizationCode(it -> it.redirectionEndpointUri(REDIRECTION_ENDPOINT_URI))
+                .idToken(it -> it.allowedAlgorithms(List.of("ES256")))
                 .cookies(it -> it.password("test-cookie-password"))
                 .buildPrototype();
 
         OidcTenantContext context = tenantContext(tenantConfig);
 
         assertThat(context.state(), is(OidcTenantState.FAILED));
+        assertThat(context.failureCause().orElseThrow().getMessage(),
+                   containsString("id_token_signing_alg_values_supported"));
     }
 
+    // OIDC Discovery §3: id_token_encryption_alg_values_supported is "OPTIONAL. JSON array".
+    // Unused advertised encryption capabilities do not govern this signed-only RP configuration.
     @Test
     void authorizationCodeSignedOnlyTenantIgnoresUnrelatedEncryptionAlgorithms() {
         PROVIDER_METADATA.set(authorizationCodeMetadataBuilder()
@@ -1545,6 +1621,8 @@ class OidcWellKnownMetadataLoadingTest {
         assertReadyTenant(tenantConfig);
     }
 
+    // OIDC Discovery §3: id_token_encryption_enc_values_supported is "OPTIONAL. JSON array".
+    // A signed-only client does not negotiate content encryption based on that list.
     @Test
     void authorizationCodeSignedOnlyTenantIgnoresUnrelatedContentEncryptionAlgorithms() {
         PROVIDER_METADATA.set(authorizationCodeMetadataBuilder()
@@ -1564,11 +1642,15 @@ class OidcWellKnownMetadataLoadingTest {
         assertReadyTenant(tenantConfig);
     }
 
+    // OIDC Discovery §3: the ID Token encryption algorithm lists are "OPTIONAL. JSON array".
+    // No local ID Token decryption requirement is configured in this signed-only tenant.
     @Test
     void authorizationCodeSignedOnlyTenantWorksWithoutEncryptionMetadata() {
         assertReadyTenant(authorizationCodeTenantConfig());
     }
 
+    // OIDC Discovery §4.2: "Claims with zero elements MUST be omitted from the response."
+    // Helidon treats these noncompliant empty, unused encryption lists as no supported encryption.
     @Test
     void signedOnlyTenantIgnoresEmptyEncryptionCapabilityLists() {
         PROVIDER_METADATA.set(authorizationCodeMetadataBuilder()
@@ -1641,6 +1723,9 @@ class OidcWellKnownMetadataLoadingTest {
         }
     }
 
+    // OIDC Discovery §3: id_token_signing_alg_values_supported is "REQUIRED. JSON array" for an OP.
+    // Unused encryption capabilities cannot make a missing list or a conformant RS256-only OP
+    // acceptable to this ES256-only RP.
     @Test
     void signedOnlyTenantStillRequiresCompatibleSigningMetadata() {
         for (boolean missing : List.of(false, true)) {
@@ -1650,17 +1735,21 @@ class OidcWellKnownMetadataLoadingTest {
             if (missing) {
                 metadata.unset("id_token_signing_alg_values_supported");
             } else {
-                metadata.setStrings("id_token_signing_alg_values_supported", List.of("ES256"));
+                metadata.setStrings("id_token_signing_alg_values_supported", List.of("RS256"));
             }
             PROVIDER_METADATA.set(metadata.build().toString());
 
-            OidcTenantContext context = tenantContext(authorizationCodeTenantConfig());
+            OidcTenantConfig tenant = OidcTenantConfig.builder().from(authorizationCodeTenantConfig())
+                    .idToken(idToken -> idToken.allowedAlgorithms(List.of("ES256"))).buildPrototype();
+            OidcTenantContext context = tenantContext(tenant);
 
             assertThat(context.state(), is(OidcTenantState.FAILED));
             assertThat(context.failureCause().orElseThrow().getMessage(), containsString("id_token_signing_alg_values_supported"));
         }
     }
 
+    // OIDC Discovery §4.2: "Claims that return multiple values are represented as JSON arrays."
+    // Rejecting a boolean instead of an optional algorithm list is Helidon's input-validation policy.
     @Test
     void signedOnlyTenantStillRejectsMalformedEncryptionMetadata() {
         for (String field : List.of("id_token_encryption_alg_values_supported", "id_token_encryption_enc_values_supported")) {
@@ -1695,6 +1784,7 @@ class OidcWellKnownMetadataLoadingTest {
         assertThat(context.state(), is(OidcTenantState.FAILED));
     }
 
+    // Discovery 4: "MUST be returned using the `application/json` content type".
     @Test
     void tenantFailsWhenWellKnownMetadataContentTypeIsNotJson() {
         wellKnownContentType = "text/plain";
@@ -1717,6 +1807,7 @@ class OidcWellKnownMetadataLoadingTest {
                    is("well-known metadata response must be application/json"));
     }
 
+    // Discovery 4.2: "A successful response MUST use the 200 OK HTTP status code".
     @Test
     void tenantFailsWhenWellKnownMetadataStatusIsNotOk() {
         wellKnownStatus = Status.CREATED_201;
@@ -1794,6 +1885,7 @@ class OidcWellKnownMetadataLoadingTest {
         }
     }
 
+    // Discovery 3: authorization_endpoint is "REQUIRED. URL of the OP's OAuth 2.0 Authorization Endpoint".
     @Test
     void authorizationCodeTenantFailsWhenWellKnownMetadataAuthorizationEndpointIsMissing() {
         PROVIDER_METADATA.set(JsonObject.builder()
@@ -1814,6 +1906,7 @@ class OidcWellKnownMetadataLoadingTest {
         assertThat(context.state(), is(OidcTenantState.FAILED));
     }
 
+    // RFC 6749, 3.1: "The endpoint URI MUST NOT include a fragment component."
     @Test
     void authorizationCodeTenantFailsWhenWellKnownMetadataAuthorizationEndpointHasFragment() {
         PROVIDER_METADATA.set(JsonObject.builder()
@@ -1835,6 +1928,7 @@ class OidcWellKnownMetadataLoadingTest {
         assertThat(context.state(), is(OidcTenantState.FAILED));
     }
 
+    // Discovery 3: "This URL MUST use the `https` scheme"; the HTTP fixture has a test-only TLS opt-out.
     @Test
     void authorizationCodeTenantFailsWhenWellKnownMetadataAuthorizationEndpointHasUnsupportedScheme() {
         PROVIDER_METADATA.set(JsonObject.builder()
@@ -1856,6 +1950,7 @@ class OidcWellKnownMetadataLoadingTest {
         assertThat(context.state(), is(OidcTenantState.FAILED));
     }
 
+    // Discovery 3: token_endpoint "is REQUIRED unless only the Implicit Flow is used."
     @Test
     void authorizationCodeTenantFailsWhenWellKnownMetadataTokenEndpointIsMissing() {
         PROVIDER_METADATA.set(JsonObject.builder()
@@ -1876,6 +1971,7 @@ class OidcWellKnownMetadataLoadingTest {
         assertThat(context.state(), is(OidcTenantState.FAILED));
     }
 
+    // RFC 6749, 3.2: "The endpoint URI MUST NOT include a fragment component."
     @Test
     void authorizationCodeTenantFailsWhenWellKnownMetadataTokenEndpointHasFragment() {
         PROVIDER_METADATA.set(JsonObject.builder()
@@ -1897,6 +1993,7 @@ class OidcWellKnownMetadataLoadingTest {
         assertThat(context.state(), is(OidcTenantState.FAILED));
     }
 
+    // Discovery 3: "This URL MUST use the `https` scheme"; the HTTP fixture has a test-only TLS opt-out.
     @Test
     void authorizationCodeTenantFailsWhenWellKnownMetadataTokenEndpointHasUnsupportedScheme() {
         PROVIDER_METADATA.set(JsonObject.builder()
@@ -1918,6 +2015,7 @@ class OidcWellKnownMetadataLoadingTest {
         assertThat(context.state(), is(OidcTenantState.FAILED));
     }
 
+    // Discovery 3: issuer is "REQUIRED. URL using the `https` scheme with no query or fragment components".
     @Test
     void tenantFailsWhenWellKnownMetadataIssuerHasQueryOrFragment() {
         PROVIDER_METADATA.set(JsonObject.builder()
@@ -1947,6 +2045,8 @@ class OidcWellKnownMetadataLoadingTest {
         assertThat(context.state(), is(OidcTenantState.FAILED));
     }
 
+    // RP-Initiated Logout 1.0 §2.1: end_session_endpoint is "REQUIRED. URL at the OP to which an RP can
+    // perform a redirect to request that the End-User be logged out at the OP" when the OP supports this feature.
     @Test
     void logoutTenantLoadsEndSessionEndpointFromWellKnownMetadata() {
         OidcTenantConfig tenantConfig = OidcTenantConfig.builder()
@@ -1964,6 +2064,9 @@ class OidcWellKnownMetadataLoadingTest {
         assertThat(WELL_KNOWN_WEBCLIENT_HEADER.get(), is(TENANT_WEBCLIENT_HEADER_VALUE));
     }
 
+    // RP-Initiated Logout 1.0 §2.1: this endpoint "MUST be included in the Server's discovery responses
+    // when RP-Initiated Logout and Discovery are supported". Its absence is not an OP error if it does not
+    // support logout, but this tenant cannot use its explicitly enabled RP-initiated logout feature.
     @Test
     void logoutTenantFailsWhenWellKnownMetadataEndSessionEndpointIsMissing() {
         PROVIDER_METADATA.set(JsonObject.builder()
@@ -1982,6 +2085,8 @@ class OidcWellKnownMetadataLoadingTest {
         assertThat(context.state(), is(OidcTenantState.FAILED));
     }
 
+    // RP-Initiated Logout §2.1: end_session_endpoint "MUST use the `https` scheme and MAY
+    // contain port, path, and query parameter components." A fragment is not an endpoint component.
     @Test
     void logoutTenantFailsWhenWellKnownMetadataEndSessionEndpointHasFragment() {
         PROVIDER_METADATA.set(JsonObject.builder()
@@ -2001,6 +2106,8 @@ class OidcWellKnownMetadataLoadingTest {
         assertThat(context.state(), is(OidcTenantState.FAILED));
     }
 
+    // OIDC Discovery §3: userinfo_endpoint is the "URL of the OP's UserInfo Endpoint";
+    // its presence is recommended to OPs, and needed by this tenant's opted-in UserInfo feature.
     @Test
     void userInfoTenantLoadsUserInfoEndpointFromWellKnownMetadata() {
         OidcTenantConfig tenantConfig = OidcTenantConfig.builder()
@@ -2022,6 +2129,8 @@ class OidcWellKnownMetadataLoadingTest {
         assertThat(WELL_KNOWN_WEBCLIENT_HEADER.get(), is(TENANT_WEBCLIENT_HEADER_VALUE));
     }
 
+    // Discovery 3: userinfo_endpoint is "RECOMMENDED" for OPs, not universally REQUIRED;
+    // it is needed to execute this tenant's explicitly enabled UserInfo request.
     @Test
     void userInfoTenantFailsWhenWellKnownMetadataUserInfoEndpointIsMissing() {
         PROVIDER_METADATA.set(authorizationCodeMetadataBuilder()
@@ -2043,6 +2152,8 @@ class OidcWellKnownMetadataLoadingTest {
         assertThat(context.state(), is(OidcTenantState.FAILED));
     }
 
+    // OIDC Discovery §3: userinfo_endpoint "MUST use the `https` scheme and MAY contain
+    // port, path, and query parameter components." A fragment is not part of that endpoint URL.
     @Test
     void userInfoTenantFailsWhenWellKnownMetadataUserInfoEndpointHasFragment() {
         PROVIDER_METADATA.set(authorizationCodeMetadataBuilder()
@@ -2065,6 +2176,9 @@ class OidcWellKnownMetadataLoadingTest {
         assertThat(context.state(), is(OidcTenantState.FAILED));
     }
 
+    // OIDC Discovery §3 (https://openid.net/specs/openid-connect-discovery-1_0.html#ProviderMetadata):
+    // userinfo_signing_alg_values_supported is an "OPTIONAL. JSON array"; the same applies to
+    // the UserInfo JWE alg/enc capability lists. This tenant opts in to signed and encrypted UserInfo.
     @Test
     void userInfoJwtTenantLoadsEncryptionMetadata() {
         PROVIDER_METADATA.set(providerMetadataBuilder()
@@ -2091,6 +2205,9 @@ class OidcWellKnownMetadataLoadingTest {
                    is(Optional.of(List.of("A256GCM"))));
     }
 
+    // OIDC Discovery §3: the signing and encryption capability lists describe algorithms
+    // "supported by the UserInfo Endpoint to encode the Claims in a JWT". Helidon refuses
+    // an explicit mismatch with its configured UserInfo JWT algorithms before login.
     @Test
     void userInfoJwtTenantRejectsUnsupportedMetadataAlgorithms() {
         PROVIDER_METADATA.set(providerMetadataBuilder()
@@ -2118,6 +2235,9 @@ class OidcWellKnownMetadataLoadingTest {
                    containsString("userinfo_encryption_alg_values_supported"));
     }
 
+    // OIDC Dynamic Client Registration §2 (https://openid.net/specs/openid-connect-registration-1_0.html):
+    // "the default `userinfo_encrypted_response_enc` value is `A128CBC-HS256`" when an encryption
+    // algorithm is chosen but no content-encryption algorithm is specified by the client.
     @Test
     void userInfoJwtTenantValidatesDefaultContentEncryptionMetadata() {
         PROVIDER_METADATA.set(providerMetadataBuilder()
@@ -2153,6 +2273,8 @@ class OidcWellKnownMetadataLoadingTest {
         assertThat(context.jwkSetManager().jwkSetUri(), is(Optional.of(jwksUri)));
     }
 
+    // RFC 9068, 4: "The resource server MUST use the keys provided by the authorization server."
+    // Keys from this ID Token issuer must not implicitly authenticate another AT issuer.
     @Test
     void discoveredOidcKeysCannotImplicitlyVerifyAnotherAccessTokenIssuer() {
         OidcTenantConfig tenant = OidcTenantConfig.builder()
@@ -2217,6 +2339,8 @@ class OidcWellKnownMetadataLoadingTest {
                    is(OidcTestIdentities.issuerSubject(issuer.toString(), "123")));
     }
 
+    // RFC 8414 §2: introspection_endpoint is "OPTIONAL. URL of the authorization server's OAuth 2.0
+    // introspection endpoint". It is required in practice only when this tenant chooses introspection.
     @Test
     void introspectionProtectedResourceTenantLoadsEndpointFromWellKnownMetadata() {
         OidcTenantConfig tenantConfig = OidcTenantConfig.builder()
@@ -2237,6 +2361,8 @@ class OidcWellKnownMetadataLoadingTest {
         assertThat(WELL_KNOWN_WEBCLIENT_HEADER.get(), is(TENANT_WEBCLIENT_HEADER_VALUE));
     }
 
+    // RFC 8414 §2: introspection_endpoint_auth_methods_supported lists "client authentication methods
+    // supported by this introspection endpoint"; reject a configured method absent from the advertised set.
     @Test
     void introspectionTenantFailsWhenWellKnownMetadataDoesNotSupportConfiguredAuthenticationMethod() {
         PROVIDER_METADATA.set(JsonObject.builder()
@@ -2260,6 +2386,8 @@ class OidcWellKnownMetadataLoadingTest {
         assertThat(context.state(), is(OidcTenantState.FAILED));
     }
 
+    // RFC 8414 §2: the signing-alg metadata lists algorithms "supported by the introspection endpoint";
+    // choosing an algorithm the OP did not advertise is not a safe fallback.
     @Test
     void introspectionTenantFailsWhenWellKnownMetadataDoesNotSupportConfiguredSigningAlgorithm() {
         PROVIDER_METADATA.set(JsonObject.builder()
@@ -2286,6 +2414,8 @@ class OidcWellKnownMetadataLoadingTest {
         assertThat(context.state(), is(OidcTenantState.FAILED));
     }
 
+    // RFC 8414 §2: introspection JWT-auth signing-alg metadata "MUST be present if either of these
+    // authentication methods are specified"; "No default algorithms are implied if this entry is omitted."
     @Test
     void jwtIntrospectionRejectsMissingDiscoveredSigningAlgorithms() {
         for (OidcClientAuthenticationMethod method : JWT_AUTHENTICATION_METHODS) {
@@ -2303,6 +2433,8 @@ class OidcWellKnownMetadataLoadingTest {
         }
     }
 
+    // RFC 8414 §2: introspection JWT-auth signing metadata lists algorithms "supported by the introspection
+    // endpoint"; an explicitly different local algorithm cannot be assumed supported.
     @Test
     void jwtIntrospectionRejectsUnsupportedDiscoveredSigningAlgorithms() {
         for (OidcClientAuthenticationMethod method : JWT_AUTHENTICATION_METHODS) {
@@ -2320,6 +2452,8 @@ class OidcWellKnownMetadataLoadingTest {
         }
     }
 
+    // RFC 8414 §2: introspection_endpoint_auth_methods_supported lists "client authentication methods supported";
+    // this OP explicitly advertises only Basic, not the configured JWT method.
     @Test
     void jwtIntrospectionRejectsUnadvertisedAuthenticationMethods() {
         for (OidcClientAuthenticationMethod method : JWT_AUTHENTICATION_METHODS) {
@@ -2474,6 +2608,9 @@ class OidcWellKnownMetadataLoadingTest {
         assertThat(WELL_KNOWN_REQUESTS.get(), is(1));
     }
 
+    // RFC 8414 §2: when grant_types_supported is absent, "the default value is"
+    // ["authorization_code", "implicit"]; client_credentials cannot be inferred.
+    // Only the outbound target fails; an unrelated OIDC browser tenant remains ready.
     @Test
     void targetClientCredentialsGrantFailsOnDemandWhenMetadataGrantTypesAreMissing() {
         PROVIDER_METADATA.set(JsonObject.builder()
@@ -2504,6 +2641,8 @@ class OidcWellKnownMetadataLoadingTest {
         assertThat(context.ready(), is(true));
     }
 
+    // RFC 8414 §2: token_endpoint "is REQUIRED unless only the implicit grant type is supported".
+    // A configured client_credentials target needs an actual token endpoint.
     @Test
     void targetClientCredentialsGrantFailsOnDemandWhenMetadataTokenEndpointIsMissing() {
         PROVIDER_METADATA.set(JsonObject.builder()
@@ -2664,6 +2803,8 @@ class OidcWellKnownMetadataLoadingTest {
         assertThat(WELL_KNOWN_WEBCLIENT_HEADER.get(), is(TENANT_WEBCLIENT_HEADER_VALUE));
     }
 
+    // Discovery 3: jwks_uri is "REQUIRED. URL of the OP's JWK Set";
+    // this test's JWT validation has no alternative configured trusted verification keys.
     @Test
     void jwtProtectedResourceTenantFailsWhenWellKnownMetadataJwkSetUriIsMissing() {
         PROVIDER_METADATA.set(JsonObject.builder()

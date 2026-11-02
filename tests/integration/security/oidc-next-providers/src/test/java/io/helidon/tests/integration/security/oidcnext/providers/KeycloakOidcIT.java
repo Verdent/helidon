@@ -17,12 +17,17 @@
 package io.helidon.tests.integration.security.oidcnext.providers;
 
 import java.net.URI;
+import java.nio.charset.StandardCharsets;
+import java.util.Base64;
 import java.util.Optional;
 
+import io.helidon.common.parameters.Parameters;
 import io.helidon.http.HeaderNames;
 import io.helidon.http.Status;
+import io.helidon.json.JsonObject;
 import io.helidon.security.providers.oidc.next.OidcCookieConfig;
 import io.helidon.webclient.api.HttpClientResponse;
+import io.helidon.webclient.api.WebClient;
 
 import org.junit.jupiter.api.Test;
 
@@ -35,11 +40,52 @@ class KeycloakOidcIT extends OidcProviderContract {
         return new KeycloakAdapter();
     }
 
+    // Fixture guard: the Keycloak client used by the shared client_secret_post contract test
+    // must reject Basic, or an RP sending the wrong method could still authenticate successfully.
+    @Test
+    void postOnlyClientRejectsBasicClientAuthentication() {
+        WebClient client = WebClient.builder().from(adapter().webClient()).build();
+        String credentials = Base64.getEncoder().encodeToString(
+                (IdpAdapter.ClientMode.POST.id() + ":" + IdpAdapter.SECRET).getBytes(StandardCharsets.UTF_8));
+        try {
+            URI tokenEndpoint = URI.create(metadata().stringValue("token_endpoint").orElseThrow());
+            try (HttpClientResponse rejected = client.post().uri(tokenEndpoint)
+                    .header(HeaderNames.AUTHORIZATION, "Basic " + credentials)
+                    .submit(Parameters.builder("token")
+                                    .add("grant_type", "authorization_code")
+                                    .add("code", "invalid-code")
+                                    .add("redirect_uri", IdpAdapter.COLLECTOR).build())) {
+                assertThat(rejected.status(), is(Status.UNAUTHORIZED_401));
+                assertThat(rejected.as(JsonObject.class).stringValue("error").orElseThrow(), is("unauthorized_client"));
+            }
+            // The same invalid code with the allowed authentication method reaches code validation instead.
+            try (HttpClientResponse allowed = client.post()
+                    .uri(tokenEndpoint)
+                    .submit(Parameters.builder("token")
+                                    .add("grant_type", "authorization_code")
+                                    .add("code", "invalid-code")
+                                    .add("redirect_uri", IdpAdapter.COLLECTOR)
+                                    .add("client_id", IdpAdapter.ClientMode.POST.id())
+                                    .add("client_secret", IdpAdapter.SECRET).build())) {
+                assertThat(allowed.status(), is(Status.BAD_REQUEST_400));
+                assertThat(allowed.as(JsonObject.class).stringValue("error").orElseThrow(), is("invalid_grant"));
+            }
+        } finally {
+            client.closeResource();
+        }
+    }
+
+    // Back-Channel Logout 1.0 errata 1 §2.7: the RP "locates the session(s) identified by the `iss` and `sub`
+    // Claims and/or the `sid` Claim" and "clears any state associated with the identified session(s)."
+    // An actual Keycloak admin logout sends the signed notification while the browser retains its cookie.
     @Test
     void administratorLogoutDeliversSidBoundBackChannelNotification() throws Exception {
         assertAdministratorBackChannelLogout(true);
     }
 
+    // Back-Channel Logout 1.0 errata 1 §2.2: the session-required registration value is "OPTIONAL. Boolean
+    // value specifying whether the RP requires that a `sid` (session ID) Claim be included in the Logout Token".
+    // This variant registers without the requirement; Keycloak may still send sid.
     @Test
     void administratorLogoutDeliversBackChannelNotificationWithoutRequiredSid() throws Exception {
         assertAdministratorBackChannelLogout(false);

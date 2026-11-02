@@ -20,7 +20,6 @@ import java.net.URI;
 import java.util.concurrent.atomic.AtomicReference;
 
 import io.helidon.http.HeaderNames;
-import io.helidon.http.HttpMediaTypes;
 import io.helidon.http.Status;
 import io.helidon.security.providers.common.OutboundTarget;
 import io.helidon.security.providers.oidc.next.OidcProviderConfig;
@@ -45,8 +44,12 @@ class KeycloakTokenExchangeIT {
 
     @Test
     void outboundTargetExchangesCurrentBearerTokenWithKeycloak() {
+        // RFC 8693 §2.1, https://www.rfc-editor.org/rfc/rfc8693.html#section-2.1:
+        // audience: "OPTIONAL. The logical name of the target service where the client intends to use
+        // the requested security token." Helidon configures it here and the downstream RP checks that audience;
+        // provider unit tests independently check the exact token-exchange grant parameters.
         AtomicReference<String> downstreamAuthorization = new AtomicReference<>();
-        WebServer downstream = downstream(downstreamAuthorization);
+        WebServer downstream = KeycloakOidcIntegrationSupport.introspectingDownstream(downstreamAuthorization, true);
         String inboundToken = KeycloakOidcIntegrationSupport.passwordAccessToken();
         URI downstreamUri = URI.create("http://localhost:" + downstream.port() + "/downstream");
         OutboundTarget outboundTarget = KeycloakOidcIntegrationSupport.tokenExchangeOutboundTarget(downstreamUri);
@@ -57,6 +60,11 @@ class KeycloakTokenExchangeIT {
                     .baseUri(KeycloakOidcIntegrationSupport.rpBaseUri(rpServer))
                     .build();
             try {
+                // Control: authentication and the requested resource audience are enforced downstream.
+                try (HttpClientResponse rejected = client.get().uri(downstreamUri)
+                        .header(HeaderNames.AUTHORIZATION, "Bearer invalid-token").request()) {
+                    assertThat(rejected.status(), is(Status.UNAUTHORIZED_401));
+                }
                 try (HttpClientResponse response = client.get("/proxy")
                         .header(HeaderNames.AUTHORIZATION, "Bearer " + inboundToken)
                         .request()) {
@@ -73,18 +81,6 @@ class KeycloakTokenExchangeIT {
             rpServer.stop();
             downstream.stop();
         }
-    }
-
-    private static WebServer downstream(AtomicReference<String> authorization) {
-        return WebServer.builder()
-                .port(0)
-                .routing(routing -> routing.get("/downstream", (request, response) -> {
-                    authorization.set(request.headers().first(HeaderNames.AUTHORIZATION).orElse(""));
-                    response.headers().contentType(HttpMediaTypes.PLAINTEXT_UTF_8);
-                    response.send("downstream");
-                }))
-                .build()
-                .start();
     }
 
     private static WebServer proxyServer(OidcProviderConfig providerConfig, URI downstreamUri) {

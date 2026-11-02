@@ -110,11 +110,16 @@ class OidcCallbackTokenLifetimeTest {
 
     @Test
     void callbackUsesTokenExchangeReferenceForAccessExpiryAndCreationTimeForSessionLifetime(URI serverUri) throws Exception {
+        // RFC 6749 §5.1: "expires_in" is the lifetime of the access token, measured from the response.
+        // https://www.rfc-editor.org/rfc/rfc6749.html#section-5.1
+        // The independent local cookie-session lifetime starts when the RP finishes authentication;
+        // it is not an OP-provided expires_in value.
         verifyCallback(serverUri, Optional.of(120L), DelayPhase.USER_INFO, false);
     }
 
     @Test
     void callbackRejectsAccessTokenThatExpiresDuringUserInfo(URI serverUri) throws Exception {
+        // Do not persist a token that has expired while UserInfo is in flight (local session policy).
         verifyCallback(serverUri, Optional.of(1L), DelayPhase.USER_INFO, true);
     }
 
@@ -125,6 +130,9 @@ class OidcCallbackTokenLifetimeTest {
 
     @Test
     void callbackPreservesUnknownAccessTokenLifetimeWithUserInfo(URI serverUri) throws Exception {
+        // RFC 6749 §5.1, https://www.rfc-editor.org/rfc/rfc6749.html#section-5.1:
+        // "If omitted, the authorization server SHOULD provide the expiration time via other means".
+        // Treat absent expires_in as unknown rather than guessing a zero-second lifetime.
         verifyCallback(serverUri, Optional.empty(), DelayPhase.USER_INFO, false);
     }
 

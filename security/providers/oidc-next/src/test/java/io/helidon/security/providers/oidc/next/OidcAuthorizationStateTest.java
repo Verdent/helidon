@@ -26,6 +26,12 @@ import static org.hamcrest.CoreMatchers.is;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
+/*
+ * RFC 6749 §10.12 (https://www.rfc-editor.org/rfc/rfc6749.html#section-10.12):
+ * "The client MUST implement CSRF protection for its redirection URI." The tenant prefix,
+ * version, base64url encoding, and 256-bit request identifier are Helidon's state format,
+ * not mandated by the OAuth wire protocol.
+ */
 class OidcAuthorizationStateTest {
     private static final String REQUEST_ID = Base64.getUrlEncoder()
             .withoutPadding()

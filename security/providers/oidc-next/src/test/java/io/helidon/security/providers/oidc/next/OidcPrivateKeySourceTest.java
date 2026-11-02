@@ -61,6 +61,9 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.DynamicTest.dynamicTest;
 
 class OidcPrivateKeySourceTest {
+    // Never fetching *private* keys via a configured URI is Helidon's local
+    // secret-handling policy. OIDC/JAR prescribe how keys are used or advertised,
+    // not this particular choice of local resource-loading API.
     private static final List<String> KEY_OPTIONS =
             List.of("client-assertion.jwk", "id-token.decryption-jwk", "user-info.jwt.decryption-jwk");
     private static final URI TOKEN_ENDPOINT = URI.create("https://issuer.example/token");

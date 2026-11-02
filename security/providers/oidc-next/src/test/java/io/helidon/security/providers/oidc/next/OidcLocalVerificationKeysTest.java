@@ -177,6 +177,9 @@ class OidcLocalVerificationKeysTest {
         assertThat(exception.getMessage(), containsString("verification-jwk must be configured for HMAC"));
     }
 
+    // RFC 9068 §4 (https://www.rfc-editor.org/rfc/rfc9068.html#section-4):
+    // "The issuer identifier for the authorization server" "MUST exactly match the value of the \"iss\" claim."
+    // Requiring a configured/discovered issuer before using local keys is Helidon's config-time guard.
     @Test
     void localKeysStillRequireATrustedIssuer() {
         IllegalArgumentException exception = assertThrows(IllegalArgumentException.class, () -> OidcTenantConfig.builder()
@@ -197,6 +200,9 @@ class OidcLocalVerificationKeysTest {
         assertThat(jwksRequests.get(), is(0));
     }
 
+    // OIDC Discovery 1.0 §3 (https://openid.net/specs/openid-connect-discovery-1_0.html#ProviderMetadata):
+    // jwks_uri is "REQUIRED. URL of the OP's JWK Set". That is an OP metadata duty;
+    // Helidon chooses to reject incomplete discovery even when verification keys are local.
     @Test
     void localKeysDoNotRelaxRequiredDiscoveryMetadata() {
         metadata.set(JsonObject.builder().from(metadata.get()).unset("jwks_uri").build());

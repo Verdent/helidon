@@ -46,6 +46,11 @@ import static org.hamcrest.Matchers.hasSize;
 import static org.junit.jupiter.api.DynamicTest.dynamicTest;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
+/*
+ * OAuth 2.0 CSRF binding: https://www.rfc-editor.org/rfc/rfc6749#section-10.12
+ * Authorization Response issuer checks: https://www.rfc-editor.org/rfc/rfc9207#section-2.4
+ * Additional tenant/cookie routing restrictions below are Helidon security policy.
+ */
 class OidcAuthorizationResponseProcessorTest {
     private static final URI ISSUER = URI.create("https://issuer.example");
     private static final URI OTHER_ISSUER = URI.create("https://other-issuer.example");
@@ -61,6 +66,7 @@ class OidcAuthorizationResponseProcessorTest {
     private static final String SECOND_STATE = authorizationState("second", 0);
     private static final String UNKNOWN_STATE = authorizationState("unknown", 0);
 
+    // RFC 6749, 10.12: "The client MUST implement CSRF protection for its redirection URI."
     @Test
     void validAuthorizationResponseValidatesStateAndClearsCookie() {
         OidcTenantConfig tenant = authorizationCodeTenant("test-cookie-password", REDIRECTION_ENDPOINT_URI);
@@ -88,6 +94,8 @@ class OidcAuthorizationResponseProcessorTest {
         assertThat(removalCookie.maxAge().orElseThrow().getSeconds(), is(0L));
     }
 
+    // RFC 6749, 4.1.2: `code` is "REQUIRED" for success and `state` is "REQUIRED if the \"state\" parameter was
+    // present"; duplicate/conflicting parameters are rejected by Helidon's fail-closed parsing policy.
     @TestFactory
     Stream<DynamicTest> malformedAuthorizationResponseCannotUseValidState() {
         return Stream.of(
@@ -261,6 +269,7 @@ class OidcAuthorizationResponseProcessorTest {
         assertThat(secondInitializations.get(), is(1));
     }
 
+    // RFC 9207, 2.4: clients "MUST extract the value of the `iss` parameter" and compare it to the expected issuer.
     @Test
     void authorizationResponseIssuerParameterMatchesExpectedIssuer() {
         OidcTenantConfig tenant = authorizationCodeTenant("test-cookie-password", REDIRECTION_ENDPOINT_URI);
@@ -282,6 +291,7 @@ class OidcAuthorizationResponseProcessorTest {
         assertThat(result.authorizationCode().orElse(""), is("authorization-code"));
     }
 
+    // RFC 9207, 2.4: "If the value does not match the expected issuer identifier, clients MUST reject".
     @Test
     void mismatchedAuthorizationResponseIssuerFailsAndClearsCookie() {
         OidcTenantConfig tenant = authorizationCodeTenant("test-cookie-password", REDIRECTION_ENDPOINT_URI);
@@ -304,6 +314,7 @@ class OidcAuthorizationResponseProcessorTest {
         assertThat(result.stateCookies().size(), is(1));
     }
 
+    // RFC 9207, 2.4 requires issuer comparison; rejecting a repeated identical `iss` is stricter Helidon policy.
     @Test
     void duplicateAuthorizationResponseIssuerFailsAndClearsCookie() {
         OidcTenantConfig tenant = authorizationCodeTenant("test-cookie-password", REDIRECTION_ENDPOINT_URI);
@@ -327,6 +338,7 @@ class OidcAuthorizationResponseProcessorTest {
         assertThat(result.stateCookies().size(), is(1));
     }
 
+    // RFC 9207, 2: the `iss` value "MUST be a URL that uses the \"https\" scheme"; empty cannot identify an AS.
     @Test
     void blankAuthorizationResponseIssuerFailsAndClearsCookie() {
         OidcTenantConfig tenant = authorizationCodeTenant("test-cookie-password", REDIRECTION_ENDPOINT_URI);
@@ -349,6 +361,8 @@ class OidcAuthorizationResponseProcessorTest {
         assertThat(result.stateCookies().size(), is(1));
     }
 
+    // RFC 9207, 2.4: "Clients MUST reject authorization responses without the `iss` parameter" from an AS
+    // that advertises this extension. This is conditional, not a universal requirement for every OP.
     @Test
     void missingAuthorizationResponseIssuerFailsWhenMetadataAdvertisesSupport() {
         OidcTenantConfig tenant = authorizationCodeTenant("test-cookie-password", REDIRECTION_ENDPOINT_URI);
@@ -370,6 +384,8 @@ class OidcAuthorizationResponseProcessorTest {
         assertThat(result.stateCookies().size(), is(1));
     }
 
+    // RFC 9207, 2.4 permits local policy for a missing `iss` ("MAY accept authorization responses" without it).
+    // Helidon requires it when distinct issuers share a callback to avoid mix-up.
     @Test
     void missingAuthorizationResponseIssuerFailsWhenDistinctIssuersShareCallback() {
         OidcTenantConfig tenant = authorizationCodeTenant("default-cookie-password", REDIRECTION_ENDPOINT_URI);
@@ -396,6 +412,7 @@ class OidcAuthorizationResponseProcessorTest {
         assertThat(result.stateCookies().size(), is(1));
     }
 
+    // RFC 9207, 2.4: compare the returned issuer "to the issuer identifier of the authorization server".
     @Test
     void matchingAuthorizationResponseIssuerAllowsSharedCallback() {
         OidcTenantConfig tenant = authorizationCodeTenant("default-cookie-password", REDIRECTION_ENDPOINT_URI);
@@ -422,6 +439,8 @@ class OidcAuthorizationResponseProcessorTest {
         assertThat(result.authorizationCode().orElse(""), is("authorization-code"));
     }
 
+    // RFC 9207, 2.4: clients "MAY accept authorization responses that do not contain the `iss` parameter".
+    // Distinct callback URIs here disambiguate the issuers; the state cookie still binds the callback.
     @Test
     void distinctIssuerCallbacksDoNotRequireAuthorizationResponseIssuer() {
         OidcTenantConfig tenant = authorizationCodeTenant("default-cookie-password", REDIRECTION_ENDPOINT_URI);
@@ -447,6 +466,7 @@ class OidcAuthorizationResponseProcessorTest {
         assertThat(result.authorizationCode().orElse(""), is("authorization-code"));
     }
 
+    // RFC 9207, 2.4: rejecting absent `iss` with multiple issuers on one callback is Helidon's mix-up policy.
     @Test
     void sharedLocalCallbackRequiresAuthorizationResponseIssuer() {
         URI localCallback = URI.create("/oidc/callback");
@@ -473,6 +493,7 @@ class OidcAuthorizationResponseProcessorTest {
         assertThat(result.description(), is("Authorization Response iss is missing"));
     }
 
+    // RFC 9207, 2.4: clients "MAY accept authorization responses that do not contain the `iss` parameter".
     @Test
     void distinctAbsoluteCallbackOriginsDoNotRequireAuthorizationResponseIssuer() {
         URI otherOriginCallback = URI.create("https://other-rp.example/oidc/callback");
@@ -498,6 +519,7 @@ class OidcAuthorizationResponseProcessorTest {
         assertThat(result.stateValidated(), is(true));
     }
 
+    // RFC 9207, 2.4: absent `iss` can be accepted by local policy; both client registrations use the same AS here.
     @Test
     void sharedCallbackForSameIssuerDoesNotRequireAuthorizationResponseIssuer() {
         OidcTenantConfig tenant = authorizationCodeTenant("default-cookie-password", REDIRECTION_ENDPOINT_URI);
@@ -520,6 +542,7 @@ class OidcAuthorizationResponseProcessorTest {
         assertThat(result.stateValidated(), is(true));
     }
 
+    // RFC 9207, 4: clients "MUST NOT allow multiple authorization servers to use the same issuer identifier."
     @Test
     void sharedIssuerCannotSelectDifferentTokenEndpoints() {
         OidcTenantConfig honest = authorizationCodeTenant("honest-cookie-password", REDIRECTION_ENDPOINT_URI);
@@ -610,6 +633,8 @@ class OidcAuthorizationResponseProcessorTest {
         assertThat(config.tenants().size(), is(2));
     }
 
+    // RFC 9207, 2.4: compare `iss` to the issuer "of the authorization server where the authorization request
+    // was sent to." A valid signed state cookie cannot authorize a different current tenant issuer.
     @Test
     void authenticationRequestIssuerMustMatchCurrentTenantIssuer() {
         OidcTenantConfig tenant = authorizationCodeTenant(OTHER_ISSUER,
@@ -634,6 +659,7 @@ class OidcAuthorizationResponseProcessorTest {
         assertThat(result.stateCookies().size(), is(1));
     }
 
+    // RFC 9207, 2: "In authorization responses to the client, including error responses" the AS includes `iss`.
     @Test
     void authorizationErrorResponseValidatesIssuerBeforeError() {
         OidcTenantConfig tenant = authorizationCodeTenant("test-cookie-password", REDIRECTION_ENDPOINT_URI);
@@ -656,6 +682,7 @@ class OidcAuthorizationResponseProcessorTest {
         assertThat(result.stateCookies().size(), is(1));
     }
 
+    // RFC 6749, 4.1.2: returned `state` is "REQUIRED if the \"state\" parameter was present" in the request.
     @Test
     void missingAuthorizationResponseStateFails() {
         OidcTenantConfig tenant = authorizationCodeTenant("test-cookie-password", REDIRECTION_ENDPOINT_URI);
@@ -672,6 +699,7 @@ class OidcAuthorizationResponseProcessorTest {
         assertThat(result.stateCookies().isEmpty(), is(true));
     }
 
+    // RFC 6749, 10.12 requires CSRF binding; rejecting two identical `state` parameters is Helidon policy.
     @Test
     void duplicateAuthorizationResponseStateFails() {
         OidcTenantConfig tenant = authorizationCodeTenant("test-cookie-password", REDIRECTION_ENDPOINT_URI);
@@ -690,6 +718,7 @@ class OidcAuthorizationResponseProcessorTest {
         assertThat(result.stateCookies().isEmpty(), is(true));
     }
 
+    // RFC 6749, 10.12: "The client MUST implement CSRF protection for its redirection URI."
     @Test
     void blankAuthorizationResponseStateFails() {
         OidcTenantConfig tenant = authorizationCodeTenant("test-cookie-password", REDIRECTION_ENDPOINT_URI);
@@ -706,6 +735,8 @@ class OidcAuthorizationResponseProcessorTest {
         assertThat(result.stateCookies().isEmpty(), is(true));
     }
 
+    // RFC 6749, 10.12: the binding value enables the client to verify the request by "matching the binding value
+    // to the user-agent's authenticated state." Without the original cookie this match is impossible.
     @Test
     void reusedAuthorizationResponseStateWithoutCookieFails() {
         OidcTenantConfig tenant = authorizationCodeTenant("test-cookie-password", REDIRECTION_ENDPOINT_URI);
@@ -882,6 +913,7 @@ class OidcAuthorizationResponseProcessorTest {
         assertThat(result.stateCookies().isEmpty(), is(true));
     }
 
+    // RFC 6749, 10.12: CSRF binding requires "matching the binding value to the user-agent's authenticated state".
     @Test
     void mismatchedAuthorizationResponseStateFailsAndPreservesCookie() {
         OidcTenantConfig tenant = authorizationCodeTenant("test-cookie-password", REDIRECTION_ENDPOINT_URI);
@@ -944,6 +976,8 @@ class OidcAuthorizationResponseProcessorTest {
         }
     }
 
+    // RFC 6749, 10.12: "The client MUST implement CSRF protection for its redirection URI." The lifetime of
+    // the cookie-backed one-time state is Helidon's bounded-state policy, not a prescribed OAuth duration.
     @Test
     void expiredAuthenticationRequestStateFailsAndClearsCookie() {
         OidcTenantConfig tenant = authorizationCodeTenant("test-cookie-password", REDIRECTION_ENDPOINT_URI);
@@ -964,6 +998,7 @@ class OidcAuthorizationResponseProcessorTest {
         assertThat(result.stateCookies().size(), is(1));
     }
 
+    // RFC 6749, 10.12: "The binding value enables the client to verify the validity of the request".
     @Test
     void authorizationResponseTenantComesFromCookieBackedState() {
         OidcTenantConfig defaultTenant = authorizationCodeTenant("default-cookie-password", REDIRECTION_ENDPOINT_URI);
@@ -987,6 +1022,7 @@ class OidcAuthorizationResponseProcessorTest {
         assertThat(result.tenantContext().orElseThrow().tenantId(), is("second"));
     }
 
+    // RFC 6749, 4.1.2.1: an error response includes an "error" parameter; no authorization code is redeemed.
     @Test
     void authorizationErrorResponseIsHandledBeforeTokenExchange() {
         OidcTenantConfig tenant = authorizationCodeTenant("test-cookie-password", REDIRECTION_ENDPOINT_URI);
@@ -1011,6 +1047,7 @@ class OidcAuthorizationResponseProcessorTest {
         assertThat(result.stateCookies().size(), is(1));
     }
 
+    // RFC 6749, 4.1.2.1: "Values for the \"error\" parameter MUST NOT include characters outside" the ASCII set.
     @Test
     void authorizationErrorResponseRejectsInvalidErrorCharacters() {
         OidcTenantConfig tenant = authorizationCodeTenant("test-cookie-password", REDIRECTION_ENDPOINT_URI);
@@ -1030,6 +1067,7 @@ class OidcAuthorizationResponseProcessorTest {
         assertThat(result.description(), is("Authorization Response error contains invalid characters"));
     }
 
+    // RFC 6749, 4.1.2.1: "Values for the \"error_description\" parameter MUST NOT include characters outside".
     @Test
     void authorizationErrorResponseRejectsInvalidErrorDescriptionCharacters() {
         OidcTenantConfig tenant = authorizationCodeTenant("test-cookie-password", REDIRECTION_ENDPOINT_URI);
@@ -1051,6 +1089,7 @@ class OidcAuthorizationResponseProcessorTest {
         assertThat(result.description(), is("Authorization Response error_description contains invalid characters"));
     }
 
+    // RFC 6749, 4.1.2.1: "Values for the \"error_uri\" parameter MUST conform to the URI-reference syntax".
     @Test
     void authorizationErrorResponseRejectsInvalidErrorUri() {
         OidcTenantConfig tenant = authorizationCodeTenant("test-cookie-password", REDIRECTION_ENDPOINT_URI);

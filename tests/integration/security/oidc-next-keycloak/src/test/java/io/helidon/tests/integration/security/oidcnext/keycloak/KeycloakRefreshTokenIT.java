@@ -19,15 +19,11 @@ package io.helidon.tests.integration.security.oidcnext.keycloak;
 import java.net.URI;
 import java.util.List;
 
-import io.helidon.config.Config;
-import io.helidon.config.ConfigSources;
 import io.helidon.http.HeaderNames;
 import io.helidon.http.Status;
 import io.helidon.security.providers.oidc.next.OidcEndpointCredential;
 import io.helidon.security.providers.oidc.next.OidcEndpointPolicyConfig;
 import io.helidon.security.providers.oidc.next.OidcProviderConfig;
-import io.helidon.security.providers.oidc.next.OidcTenantConfig;
-import io.helidon.security.providers.oidc.next.OidcTokenValidationConfig;
 import io.helidon.tests.integration.security.oidcnext.keycloak.KeycloakOidcIntegrationSupport.BrowserSession;
 import io.helidon.webclient.api.HttpClientResponse;
 import io.helidon.webserver.WebServer;
@@ -38,6 +34,7 @@ import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
 import static org.hamcrest.CoreMatchers.is;
+import static org.hamcrest.CoreMatchers.not;
 import static org.hamcrest.MatcherAssert.assertThat;
 
 @Testcontainers(disabledWithoutDocker = true)
@@ -45,27 +42,13 @@ class KeycloakRefreshTokenIT {
     @Container
     static final GenericContainer<?> CONTAINER = KeycloakOidcContainer.CONTAINER;
 
+    // The refresh-token grant is independently observed at the actual OP in the shared
+    // real-provider contract. This specialized test only checks the browser-visible
+    // cookie update and retained identity for Keycloak's short-lived client.
     @Test
-    void authorizationCodeFlowRefreshesKeycloakAccessTokenAndUpdatesLocalCookie() {
-        assertRefreshedAuthentication(KeycloakOidcIntegrationSupport.authorizationCodeRefreshProviderConfig());
-    }
-
-    @Test
-    void authorizationCodeFlowRefreshesDefaultKeycloakAccessTokenWithCustomJwtLayout() {
-        OidcProviderConfig original = KeycloakOidcIntegrationSupport.authorizationCodeRefreshProviderConfig();
-        OidcTenantConfig tenant = original.tenants().get("default");
-        OidcTokenValidationConfig custom = OidcTokenValidationConfig.create(Config.create(
-                ConfigSources.classpath("keycloak-jwt-custom.yaml")).get("protected-resource.token-validation"));
-        OidcTenantConfig customized = OidcTenantConfig.builder().from(tenant)
-                .protectedResource(resource -> resource.enabled(false).tokenValidation(custom))
-                .buildPrototype();
-        OidcProviderConfig providerConfig = OidcProviderConfig.builder().from(original)
-                .putTenant("default", customized).buildPrototype();
-
-        assertRefreshedAuthentication(providerConfig);
-    }
-
-    private static void assertRefreshedAuthentication(OidcProviderConfig providerConfig) {
+    void shortLivedKeycloakBrowserSessionUpdatesLocalCookieAndRetainsAuthentication() {
+        OidcProviderConfig providerConfig = KeycloakOidcIntegrationSupport.authorizationCodeRefreshProviderConfig();
+        String localCookieName = providerConfig.tenants().get("default").cookies().localAuthenticationCookieName();
         OidcEndpointPolicyConfig browserPolicy = OidcEndpointPolicyConfig.builder()
                 .acceptedCredentials(List.of(OidcEndpointCredential.AUTHENTICATION_COOKIE))
                 .buildPrototype();
@@ -75,6 +58,7 @@ class KeycloakRefreshTokenIT {
         try (BrowserSession browser = new BrowserSession()) {
             URI resourceUri = KeycloakOidcIntegrationSupport.rpBaseUri(rpServer).resolve("/resource");
             KeycloakOidcIntegrationSupport.authenticate(browser, resourceUri);
+            String originalSessionCookie = browser.cookieValue(localCookieName).orElseThrow();
 
             try (HttpClientResponse authenticated = browser.get(resourceUri)) {
                 assertThat(authenticated.status(), is(Status.OK_200));
@@ -82,6 +66,9 @@ class KeycloakRefreshTokenIT {
                            is(KeycloakOidcIntegrationSupport.alicePrincipalResponse()));
                 assertThat(authenticated.headers().contains(HeaderNames.SET_COOKIE), is(true));
             }
+            // A Set-Cookie header alone could be unrelated. Compare the browser-visible
+            // session cookie; this does not by itself prove that an OP grant occurred.
+            assertThat(browser.cookieValue(localCookieName).orElseThrow(), not(is(originalSessionCookie)));
         } finally {
             rpServer.stop();
         }

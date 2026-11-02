@@ -100,8 +100,9 @@ class OidcConformanceIT {
             "oidcc-client-test-missing-iat", "oidcc-client-test-idtoken-sig-none",
             "oidcc-client-test-invalid-sig-rs256", "oidcc-client-test-userinfo-invalid-sub",
             "oidcc-client-test-nonce-invalid",
-            // OIDC Core 10.1 requires a JWS kid when the issuer publishes multiple keys. The official test permits
-            // either rejecting that token or trying keys; this RP deliberately rejects the nonconforming token.
+            // OIDC Core 1.0, 10.1 (https://openid.net/specs/openid-connect-core-1_0.html#Signing):
+            // "If there are multiple keys in the referenced JWK Set document, a `kid` value MUST be provided"
+            // The official test permits rejecting or trying keys; this RP rejects the nonconforming token.
             "oidcc-client-test-kid-absent-multiple-jwks");
 
     private static OidcConformanceSuite suiteEnvironment;

@@ -27,7 +27,10 @@ import org.junit.jupiter.api.Test;
 import static org.hamcrest.CoreMatchers.is;
 import static org.hamcrest.MatcherAssert.assertThat;
 
+/* RFC 6750, OAuth 2.0 Bearer Token Usage: https://www.rfc-editor.org/rfc/rfc6750.html */
 class OidcBearerTokenExtractorTest {
+    // RFC 6750, 2.1: "Resource servers MUST support this method." RFC 9110, 11.1:
+    // "It uses a case-insensitive token to identify the authentication scheme".
     @Test
     void extractsAuthorizationHeaderBearerToken() {
         OidcBearerTokenExtractionResult result = OidcBearerTokenExtractor.extract(
@@ -55,6 +58,8 @@ class OidcBearerTokenExtractorTest {
         assertThat(result.invalidRequest(), is(false));
     }
 
+    // RFC 6750, 2.3: the query transport uses the "access_token" parameter;
+    // it is optional in Helidon and RFC 6750 says its use SHOULD NOT occur when a header is possible.
     @Test
     void extractsQueryParameterBearerTokenWhenTransportIsEnabled() {
         OidcBearerTokenExtractionResult result = OidcBearerTokenExtractor.extract(
@@ -70,6 +75,7 @@ class OidcBearerTokenExtractorTest {
         assertThat(result.bearerToken().orElseThrow(), is("access-token"));
     }
 
+    // RFC 6750, 5.2: "confidentiality protection MUST be applied using TLS".
     @Test
     void rejectsAuthorizationHeaderBearerTokenOverInsecureTransport() {
         OidcBearerTokenExtractionResult result = OidcBearerTokenExtractor.extract(
@@ -85,6 +91,7 @@ class OidcBearerTokenExtractorTest {
         assertThat(result.errorDescription().orElse(""), is("Bearer Token requires secure transport"));
     }
 
+    // Deliberate development opt-out of the RFC 6750 TLS requirement; not a conformant deployment default.
     @Test
     void acceptsAuthorizationHeaderBearerTokenOverInsecureTransportWhenDisabled() {
         OidcBearerTokenExtractionResult result = OidcBearerTokenExtractor.extract(
@@ -200,6 +207,7 @@ class OidcBearerTokenExtractorTest {
         assertThat(result.invalidRequest(), is(false));
     }
 
+    // RFC 6750, 2: "Clients MUST NOT use more than one method to transmit the token in each request."
     @Test
     void rejectsMultipleCredentialSources() {
         OidcBearerTokenExtractionResult result = OidcBearerTokenExtractor.extract(
@@ -276,6 +284,7 @@ class OidcBearerTokenExtractorTest {
         assertThat(result.errorDescription().orElse(""), is("Multiple Bearer Tokens found in query parameter"));
     }
 
+    // RFC 6750, 2.1: "credentials = \"Bearer\" 1*SP b64token"; an empty token is not b64token.
     @Test
     void rejectsMalformedAuthorizationHeaderBearerToken() {
         OidcBearerTokenExtractionResult result = OidcBearerTokenExtractor.extract(
@@ -289,8 +298,9 @@ class OidcBearerTokenExtractorTest {
         assertThat(result.errorDescription().orElse(""), is("Malformed Bearer Token in Authorization header"));
     }
 
+    // RFC 6750, 2.1: "credentials = \"Bearer\" 1*SP b64token"; trailing whitespace is not padding.
     @Test
-    void rejectsPaddedAuthorizationHeaderBearerToken() {
+    void rejectsTrailingWhitespaceInAuthorizationHeaderBearerToken() {
         OidcBearerTokenExtractionResult result = OidcBearerTokenExtractor.extract(
                 SecurityEnvironment.builder()
                         .header("Authorization", "Bearer access-token ")
@@ -315,6 +325,7 @@ class OidcBearerTokenExtractorTest {
         assertThat(result.errorDescription().orElse(""), is("Malformed Bearer Token in Authorization header"));
     }
 
+    // RFC 6750, 2.1: "b64token =" permits a trailing sequence of "=" padding, not an embedded "=".
     @Test
     void rejectsAuthorizationHeaderBearerTokenWithMisplacedPadding() {
         OidcBearerTokenExtractionResult result = OidcBearerTokenExtractor.extract(
@@ -328,6 +339,7 @@ class OidcBearerTokenExtractorTest {
         assertThat(result.errorDescription().orElse(""), is("Malformed Bearer Token in Authorization header"));
     }
 
+    // RFC 6750, 2.1: the scheme is followed by "1*SP", not a tab.
     @Test
     void rejectsTabSeparatedAuthorizationHeaderBearerToken() {
         OidcBearerTokenExtractionResult result = OidcBearerTokenExtractor.extract(
@@ -402,8 +414,9 @@ class OidcBearerTokenExtractorTest {
         assertThat(result.errorDescription().orElse(""), is("Multiple Bearer Tokens found in query parameter"));
     }
 
+    // RFC 6750, 2.3: the parameter carries the token; surrounding whitespace is not token content.
     @Test
-    void rejectsPaddedQueryParameterBearerToken() {
+    void rejectsSurroundingWhitespaceInQueryParameterBearerToken() {
         OidcBearerTokenExtractionResult result = OidcBearerTokenExtractor.extract(
                 SecurityEnvironment.builder()
                         .queryParam("access_token", " access-token ")
@@ -415,5 +428,21 @@ class OidcBearerTokenExtractorTest {
         assertThat(result.bearerToken().isEmpty(), is(true));
         assertThat(result.invalidRequest(), is(true));
         assertThat(result.errorDescription().orElse(""), is("Malformed Bearer Token in query parameter"));
+    }
+
+    // RFC 6750, 2.1: "b64token" ends with "*\"=\""; real base64url padding must be accepted.
+    @Test
+    void acceptsBearerTokenWithTrailingEqualsPadding() {
+        SecurityEnvironment environment = SecurityEnvironment.builder()
+                .targetUri(URI.create("https://rp.example/resource"))
+                .header("Authorization", "Bearer access-token==")
+                .queryParam("access_token", "access-token==")
+                .build();
+
+        assertThat(OidcBearerTokenExtractor.extract(environment, OidcTokenTransportConfig.create())
+                           .bearerToken().orElseThrow(), is("access-token=="));
+        assertThat(OidcBearerTokenExtractor.extract(environment, OidcTokenTransportConfig.builder()
+                           .authorizationHeaderEnabled(false).queryParameterEnabled(true).buildPrototype())
+                           .bearerToken().orElseThrow(), is("access-token=="));
     }
 }

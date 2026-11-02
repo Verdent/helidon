@@ -54,6 +54,10 @@ import static org.hamcrest.MatcherAssert.assertThat;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.DynamicTest.dynamicTest;
 
+/*
+ * OIDC authorization code flow: https://openid.net/specs/openid-connect-core-1_0.html#CodeFlowAuth
+ * OAuth authorization response issuer: https://www.rfc-editor.org/rfc/rfc9207#section-2.4
+ */
 class OidcAuthorizationCodeFlowIT {
     @TestFactory
     Stream<DynamicTest> callbackStyleApplicationQueriesSurviveLoginAndSessionRestoration() {
@@ -372,6 +376,8 @@ class OidcAuthorizationCodeFlowIT {
         }
     }
 
+    // RFC 9207, 2.4: "compare the result to the issuer identifier of the authorization server
+    // where the authorization request was sent to" when iss is present.
     @Test
     void authorizationCodeFlowValidatesSupportedAuthorizationResponseIssuer() {
         try (TestOidcServer idp = TestOidcServer.builder()
@@ -416,6 +422,8 @@ class OidcAuthorizationCodeFlowIT {
         }
     }
 
+    // RFC 9207, 2.4: "If the value does not match the expected issuer identifier, clients MUST reject
+    // the authorization response and MUST NOT proceed with the authorization grant."
     @Test
     void authorizationCodeFlowRejectsWrongAuthorizationResponseIssuer() {
         try (TestOidcServer idp = TestOidcServer.builder()
@@ -454,6 +462,8 @@ class OidcAuthorizationCodeFlowIT {
         }
     }
 
+    // RFC 9207, 2.4: "Clients MUST reject authorization responses without the `iss` parameter from
+    // authorization servers that do support the parameter"; this OP advertises support explicitly.
     @Test
     void authorizationCodeFlowRejectsMissingSupportedAuthorizationResponseIssuer() {
         try (TestOidcServer idp = TestOidcServer.builder()

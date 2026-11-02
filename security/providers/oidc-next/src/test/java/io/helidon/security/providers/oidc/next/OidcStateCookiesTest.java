@@ -40,6 +40,12 @@ import static org.hamcrest.Matchers.is;
 import static org.hamcrest.Matchers.lessThanOrEqualTo;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
+/*
+ * RFC 6749 §10.12 (https://www.rfc-editor.org/rfc/rfc6749.html#section-10.12):
+ * "The client MUST implement CSRF protection for its redirection URI." These tests cover
+ * Helidon's authenticated, bounded cookie representation of that transaction state;
+ * OAuth does not prescribe cookie names, chunking, or SameSite values.
+ */
 class OidcStateCookiesTest {
     private static final String TENANT = "tenant";
     private static final Instant NOW = Instant.parse("2026-10-07T10:00:00Z");

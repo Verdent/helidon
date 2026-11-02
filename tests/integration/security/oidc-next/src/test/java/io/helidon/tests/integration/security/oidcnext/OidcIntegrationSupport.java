@@ -18,6 +18,7 @@ package io.helidon.tests.integration.security.oidcnext;
 
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
+import java.time.Instant;
 import java.util.Base64;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -315,7 +316,7 @@ final class OidcIntegrationSupport {
             client.closeResource();
         }
 
-        private Optional<String> cookieHeader() {
+        Optional<String> cookieHeader() {
             if (cookies.isEmpty()) {
                 return Optional.empty();
             }
@@ -335,7 +336,19 @@ final class OidcIntegrationSupport {
                     .allValues()
                     .stream()
                     .map(SetCookie::parse)
-                    .forEach(cookie -> cookies.put(cookie.name(), cookie.value()));
+                    .forEach(cookie -> {
+                        // SetCookie serialization may omit Max-Age=0; Expires still instructs a browser to delete.
+                        boolean expired = cookie.maxAge()
+                                .map(age -> age.isZero() || age.isNegative())
+                                .orElseGet(() -> cookie.expires()
+                                        .map(expiration -> !expiration.toInstant().isAfter(Instant.now()))
+                                        .orElse(false));
+                        if (expired) {
+                            cookies.remove(cookie.name());
+                        } else {
+                            cookies.put(cookie.name(), cookie.value());
+                        }
+                    });
         }
     }
 }

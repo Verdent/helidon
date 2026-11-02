@@ -37,6 +37,10 @@ import static org.hamcrest.CoreMatchers.is;
 import static org.hamcrest.MatcherAssert.assertThat;
 
 class OidcEndpointOverrideIT {
+    // RFC 9207 §2.3 (https://www.rfc-editor.org/rfc/rfc9207.html#section-2.3):
+    // the server "MUST indicate its support for the `iss` parameter by setting the
+    // metadata parameter `authorization_response_iss_parameter_supported`" to true.
+    // This test exercises only the *synthetic OP fixture*, not OIDC Next's RP metadata loader.
     @Test
     void metadataEndpointIncludesAdditiveCustomClaims() {
         try (TestOidcServer idp = TestOidcServer.builder()
@@ -61,6 +65,10 @@ class OidcEndpointOverrideIT {
         }
     }
 
+    // OIDC Core 1.0 §3.1.3.3 (https://openid.net/specs/openid-connect-core-1_0.html):
+    // "The response uses the `application/json` media type." The fixture deliberately
+    // sends text/plain and omits the ID Token; RP rejection is fail-closed behavior,
+    // not evidence of a mandated RP error status for every malformed OP response.
     @Test
     void tokenEndpointOverrideCanBreakResponseExactly() {
         try (TestOidcServer idp = TestOidcServer.builder()
@@ -95,6 +103,8 @@ class OidcEndpointOverrideIT {
         }
     }
 
+    // This tests a reusable fake-OP token handler and ordinary RP login, not a
+    // separate OAuth/OIDC requirement about configurable endpoint overrides.
     @Test
     void tokenEndpointOverrideCanReuseDefaultTokenIssuer() {
         try (TestOidcServer idp = TestOidcServer.builder()

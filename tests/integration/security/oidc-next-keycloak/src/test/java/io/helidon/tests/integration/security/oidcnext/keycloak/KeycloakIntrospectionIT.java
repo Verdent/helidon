@@ -41,6 +41,9 @@ class KeycloakIntrospectionIT {
 
     @Test
     void protectedResourceValidatesAccessTokenThroughKeycloakIntrospection() {
+        // RFC 7662 §2.2 (https://www.rfc-editor.org/rfc/rfc7662.html#section-2.2):
+        // active is "REQUIRED. Boolean indicator of whether or not the presented token is currently active."
+        // This test exercises RP acceptance of a live token.
         String accessToken = KeycloakOidcIntegrationSupport.passwordAccessToken();
         OidcProviderConfig providerConfig = KeycloakOidcIntegrationSupport
                 .protectedResourceProviderConfig(OidcTokenValidationMethod.INTROSPECTION);
@@ -69,6 +72,9 @@ class KeycloakIntrospectionIT {
 
     @Test
     void protectedResourceValidatesAccessTokenAudienceThroughKeycloakIntrospection() {
+        // RFC 9700 §2.3 (https://www.rfc-editor.org/rfc/rfc9700.html#section-2.3):
+        // resource servers must check whether a token "was meant to be used for that particular resource server".
+        // Keycloak provides audience data in this fixture; RFC 7662 does not require every OP to return aud.
         String accessToken = KeycloakOidcIntegrationSupport.passwordAccessToken();
         OidcProviderConfig providerConfig = KeycloakOidcIntegrationSupport
                 .protectedResourceProviderConfig(OidcTokenValidationMethod.INTROSPECTION,
@@ -99,6 +105,8 @@ class KeycloakIntrospectionIT {
 
     @Test
     void protectedResourceRejectsWrongAudienceThroughKeycloakIntrospection() {
+        // RFC 9700 §2.3 (https://www.rfc-editor.org/rfc/rfc9700.html#section-2.3):
+        // "If it was not, the resource server MUST refuse to serve the respective request."
         String accessToken = KeycloakOidcIntegrationSupport.passwordAccessToken();
         OidcProviderConfig providerConfig = KeycloakOidcIntegrationSupport
                 .protectedResourceProviderConfig(OidcTokenValidationMethod.INTROSPECTION, "other-api", true);
@@ -126,6 +134,9 @@ class KeycloakIntrospectionIT {
 
     @Test
     void protectedResourceRejectsUnknownAccessTokenThroughKeycloakIntrospection() {
+        // RFC 7662 §2.2 (https://www.rfc-editor.org/rfc/rfc7662.html#section-2.2):
+        // for a token that "does not exist on this server", the OP MUST return active=false.
+        // The protected resource must not accept that inactive token as authentication.
         OidcProviderConfig providerConfig = KeycloakOidcIntegrationSupport
                 .protectedResourceProviderConfig(OidcTokenValidationMethod.INTROSPECTION);
         WebServer rpServer = KeycloakOidcIntegrationSupport.rpServer(

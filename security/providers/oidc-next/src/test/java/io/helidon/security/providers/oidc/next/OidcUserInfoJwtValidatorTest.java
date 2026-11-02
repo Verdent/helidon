@@ -66,9 +66,13 @@ class OidcUserInfoJwtValidatorTest {
         idToken = new OidcValidatedIdToken(signed.tokenContent(), false, signed, signed.getJwt());
     }
 
+    /*
+     * Core 1.0, 5.3.2 (https://openid.net/specs/openid-connect-core-1_0.html#UserInfoResponse):
+     * "If signed, the UserInfo Response MUST contain the Claims `iss` (issuer) and `aud` (audience)".
+     * RFC 7519, 4.1.4-4.1.6: "Use of this claim is OPTIONAL." applies to `exp`, `nbf`, and `iat`.
+     */
     @Test
     void signedAndNestedUserInfoMayOmitOptionalTimeClaims() {
-        // Core requires sub/iss/aud, but does not require an exp, iat, or nbf in the UserInfo JWT.
         for (boolean nested : List.of(false, true)) {
             OidcTenantContext tenant = tenant(nested, Duration.ofSeconds(30));
             try {
@@ -82,6 +86,8 @@ class OidcUserInfoJwtValidatorTest {
         }
     }
 
+    // RFC 7519, 4.1.4 (https://www.rfc-editor.org/rfc/rfc7519#section-4.1.4):
+    // "the current date/time MUST be before the expiration date/time"; it MAY allow small clock-skew leeway.
     @Test
     void signedAndNestedUserInfoExpirationRespectsConfiguredSkewStrictly() {
         for (boolean nested : List.of(false, true)) {
@@ -102,6 +108,8 @@ class OidcUserInfoJwtValidatorTest {
         }
     }
 
+    // RFC 7519, 4.1.5: for `nbf`, the JWT "MUST NOT be accepted for processing" before the allowed boundary.
+    // The `iat` future-issuance tolerance is a configurable Helidon policy, not a UserInfo Core requirement.
     @Test
     void signedAndNestedUserInfoOptionalTimeClaimsRespectConfiguredSkew() {
         for (boolean nested : List.of(false, true)) {
@@ -122,6 +130,7 @@ class OidcUserInfoJwtValidatorTest {
         }
     }
 
+    // RFC 7519, 4.1.4: "the current date/time MUST be before the expiration date/time" with zero leeway here.
     @Test
     void signedAndNestedUserInfoExpirationAtValidationTimeIsInvalidWithoutSkew() {
         for (boolean nested : List.of(false, true)) {

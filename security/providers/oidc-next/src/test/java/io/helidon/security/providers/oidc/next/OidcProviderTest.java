@@ -165,6 +165,9 @@ class OidcProviderTest {
 
     @Test
     void protectedResourceMissingBearerTokenReturnsChallenge() {
+        // RFC 6750 §3, https://www.rfc-editor.org/rfc/rfc6750.html#section-3:
+        // RFC wording: the resource server MUST include the HTTP "WWW-Authenticate" response header field.
+        // RFC 6750 §3.1 says no error code SHOULD accompany a request with no credentials.
         OidcProvider provider = providerWithTenant();
 
         AuthenticationResponse response = provider.authenticate(
@@ -401,6 +404,8 @@ class OidcProviderTest {
 
     @Test
     void insecureBearerTokenRequestFailsSafelyBeforeValidation() {
+        // RFC 6750 §1: "TLS is mandatory to implement and use with this specification".
+        // The next test checks Helidon's explicit non-conformant HTTP opt-out for local testing.
         OidcProvider provider = providerWithTenant();
         SecurityEnvironment environment = SecurityEnvironment.builder()
                 .targetUri(URI.create("http://rp.example/resource"))
@@ -973,6 +978,9 @@ class OidcProviderTest {
 
     @Test
     void authorizationCodeFlowInitiationRequestsConsentForOfflineAccess() {
+        // OIDC Core §11, https://openid.net/specs/openid-connect-core-1_0.html#OfflineAccess:
+        // Core wording: When offline access is requested, a `prompt` parameter value of `consent` MUST be used
+        // unless another condition permits processing; this tenant has no such alternative configured.
         OidcTenantConfig tenant = authorizationCodeTenant(code -> code.scopes(List.of("openid", "offline_access")));
         OidcProvider provider = provider(tenant);
         SecurityEnvironment environment = SecurityEnvironment.builder()
@@ -1163,6 +1171,11 @@ class OidcProviderTest {
 
     @Test
     void authorizationCodeFlowCanUsePlainPkceMethod() {
+        // RFC 7636 §4.3, https://www.rfc-editor.org/rfc/rfc7636.html#section-4.3:
+        // RFC wording: Code verifier transformation method is "S256" or "plain".
+        // RFC 9700 §2.1.1: "clients SHOULD use PKCE code challenge methods that do not expose
+        // the PKCE verifier in the authorization request". Explicit plain is supported for this
+        // confidential test client, not the secure default or the recommended deployment setting.
         OidcTenantConfig tenant = authorizationCodeTenant(code -> code.pkceMethod(OidcPkceMethod.PLAIN),
                                                           builder -> builder.clientSecret("client-secret"));
         OidcProvider provider = provider(tenant);
@@ -1183,6 +1196,9 @@ class OidcProviderTest {
 
     @Test
     void authorizationCodeFlowCanDisablePkce() {
+        // RFC 9700 §2.1.1, https://www.rfc-editor.org/rfc/rfc9700.html#section-2.1.1:
+        // "For confidential clients, the use of PKCE [RFC7636] is RECOMMENDED" (public clients MUST use it).
+        // This explicit confidential-client opt-out exists for controlled deployments and tests.
         OidcTenantConfig tenant = authorizationCodeTenant(code -> code.pkceRequired(false),
                                                           builder -> builder.clientSecret("client-secret"));
         OidcProvider provider = provider(tenant);
@@ -1196,6 +1212,8 @@ class OidcProviderTest {
         UriQuery query = UriQuery.create(location);
         assertThat(query.contains("code_challenge"), is(false));
         assertThat(query.contains("code_challenge_method"), is(false));
+        // Keep the transaction-bound OIDC nonce when this confidential client opts out of PKCE.
+        assertThat(query.contains("nonce"), is(true));
         assertThat(authenticationRequestState(response, tenant).pkceVerifier().isEmpty(), is(true));
     }
 

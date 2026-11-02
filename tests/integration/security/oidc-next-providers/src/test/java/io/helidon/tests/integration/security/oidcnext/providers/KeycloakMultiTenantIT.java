@@ -106,6 +106,10 @@ class KeycloakMultiTenantIT {
         }
     }
 
+    // OIDC Core 1.0 §5.7 (https://openid.net/specs/openid-connect-core-1_0.html):
+    // "the only guaranteed unique identifier for a given End-User is the combination of the `iss` Claim
+    // and the `sub` Claim." Cookie names, selected WebClient and header-versus-path precedence
+    // are Helidon's multitenant application policy, not protocol-mandated tenant selectors.
     @Test
     void overlappingLoginsAndConflictingTenantSelectorsUseTheSelectedTenantsConfiguration() throws Exception {
         try (TenantRelyingParty rp = relyingParty(FIRST_CLIENT, SECOND_CLIENT,
@@ -177,6 +181,9 @@ class KeycloakMultiTenantIT {
         }
     }
 
+    // RFC 9207 §2.4 (https://www.rfc-editor.org/rfc/rfc9207.html#section-2.4):
+    // "If the value does not match the expected issuer identifier, clients MUST reject the authorization response".
+    // Both responses come from real OPs; only state is swapped, and the good transaction remains usable.
     @Test
     void responseFromSecondIssuerCannotCompleteFirstTenantsLogin() throws Exception {
         IdpAdapter.ClientMode mode = IdpAdapter.ClientMode.BASIC;
@@ -206,6 +213,9 @@ class KeycloakMultiTenantIT {
         }
     }
 
+    // Back-Channel Logout 1.0 §2.7 (https://openid.net/specs/openid-connect-backchannel-1_0.html):
+    // "the RP locates the session(s) identified by the `iss` and `sub` Claims and/or the `sid` Claim".
+    // Both OPs use the same sub; only the issuer's matching tenant must be revoked.
     @Test
     void backChannelLogoutRevokesOnlyTheIssuingTenantsSession() throws Exception {
         try (TenantRelyingParty rp = relyingParty(FIRST_CLIENT, SECOND_CLIENT,
@@ -245,6 +255,9 @@ class KeycloakMultiTenantIT {
         }
     }
 
+    // Refresh of one native OP session must not overwrite the other tenant's browser cookie.
+    // This is Helidon multitenant isolation policy; it does not assert every OIDC Core §12.2
+    // refreshed-ID-Token continuity check (which is exercised by separate validator tests).
     @Test
     void refreshingOneTenantDoesNotReplaceTheOtherTenantsSession() throws Exception {
         IdpAdapter.ClientMode shortLived = IdpAdapter.ClientMode.SHORT_LIVED;

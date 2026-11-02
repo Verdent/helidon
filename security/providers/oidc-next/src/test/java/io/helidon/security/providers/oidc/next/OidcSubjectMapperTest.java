@@ -33,6 +33,12 @@ import static org.hamcrest.CoreMatchers.is;
 import static org.hamcrest.CoreMatchers.not;
 import static org.hamcrest.MatcherAssert.assertThat;
 
+/*
+ * OIDC Core 1.0 §5.7 (https://openid.net/specs/openid-connect-core-1_0.html):
+ * "the only guaranteed unique identifier for a given End-User is the combination of the `iss` Claim
+ * and the `sub` Claim." The namespace encoding and alternate-claim choices tested below are
+ * Helidon's identity-mapping policy, not wire-format requirements from Core.
+ */
 class OidcSubjectMapperTest {
     private static final String ISSUER = "https://issuer.example";
     private static final OidcSubjectMappingConfig DEFAULT_MAPPING = OidcSubjectMappingConfig.create();

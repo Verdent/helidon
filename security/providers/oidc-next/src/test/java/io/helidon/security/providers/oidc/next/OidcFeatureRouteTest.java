@@ -96,6 +96,13 @@ import static org.hamcrest.Matchers.not;
 import static org.junit.jupiter.api.Assertions.assertAll;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
+/*
+ * OIDC Core UserInfo/ID Token: https://openid.net/specs/openid-connect-core-1_0.html
+ * RP-Initiated Logout: https://openid.net/specs/openid-connect-rpinitiated-1_0.html
+ * Issuer in authorization response: https://www.rfc-editor.org/rfc/rfc9207#section-2.4
+ * Local cookie/session-routing and explicitly configured strictness are Helidon policy, not
+ * unconditional protocol requirements.
+ */
 @ServerTest
 class OidcFeatureRouteTest {
     private static final URI ISSUER = URI.create("https://issuer.example");
@@ -1758,6 +1765,7 @@ class OidcFeatureRouteTest {
         }
     }
 
+    // Core 5.3.2: "The `sub` (subject) Claim MUST always be returned in the UserInfo Response."
     @Test
     void redirectionEndpointRouteMergesUserInfoClaims(URI serverUri) {
         userInfoEndpointResponseBody = userInfoEndpointResponse(SUBJECT)
@@ -1966,6 +1974,7 @@ class OidcFeatureRouteTest {
         }
     }
 
+    // Core 5.3.2: "If the UserInfo Response is signed and/or encrypted, then the Claims are returned in a JWT".
     @Test
     void redirectionEndpointRouteMergesSignedJwtUserInfoClaims(URI serverUri) {
         userInfoEndpointContentType = "application/jwt";
@@ -2515,6 +2524,8 @@ class OidcFeatureRouteTest {
         }
     }
 
+    // Core 5.3.2: "The `sub` Claim in the UserInfo Response MUST be verified to exactly match
+    // the `sub` Claim in the ID Token" before using UserInfo claims.
     @Test
     void redirectionEndpointRouteRejectsUserInfoSubjectMismatch(URI serverUri) {
         userInfoEndpointResponseBody = userInfoEndpointResponse("other-subject").build().toString();
@@ -2542,6 +2553,7 @@ class OidcFeatureRouteTest {
         }
     }
 
+    // Core 5.3.2: "The `sub` (subject) Claim MUST always be returned in the UserInfo Response."
     @Test
     void redirectionEndpointRouteRejectsInvalidUserInfoSubjectValues(URI serverUri) {
         OidcTenantConfig tenant = tenantConfigWithUserInfo(serverUri);
@@ -2672,6 +2684,8 @@ class OidcFeatureRouteTest {
         }
     }
 
+    // Core 5.3.2: "The content-type of the HTTP response MUST be `application/json`"
+    // for a text JSON UserInfo response.
     @Test
     void redirectionEndpointRouteRejectsUserInfoResponseWithoutJsonContentType(URI serverUri) {
         userInfoEndpointContentType = null;
@@ -3095,6 +3109,8 @@ class OidcFeatureRouteTest {
         }
     }
 
+    // RP-Initiated Logout 2: "An RP requests that the OP log out the End-User by redirecting
+    // the End-User's User Agent to the OP's Logout Endpoint."
     @Test
     void logoutEndpointRouteRedirectsToEndSessionEndpoint() {
         OidcTenantConfig tenant = tenantConfigWithEndSessionLogout(endSession -> endSession
@@ -3241,6 +3257,8 @@ class OidcFeatureRouteTest {
         }
     }
 
+    // RP-Initiated Logout 2: "The value MUST have been previously registered with the OP";
+    // local early rejection protects against sending an unregistered redirect to the OP.
     @Test
     void logoutEndpointRouteRejectsUnallowedPostLogoutRedirectUri() {
         OidcTenantConfig tenant = tenantConfigWithEndSessionLogout(endSession -> endSession
@@ -3272,6 +3290,8 @@ class OidcFeatureRouteTest {
         }
     }
 
+    // RP-Initiated Logout 3: "does not exactly match one of the previously registered" values;
+    // Helidon's allowlist uses an exact-string match, including the host's spelling.
     @Test
     void logoutEndpointRouteRejectsPostLogoutRedirectUriHostCaseMismatch() {
         OidcTenantConfig tenant = tenantConfigWithEndSessionLogout(endSession -> endSession
@@ -3328,6 +3348,8 @@ class OidcFeatureRouteTest {
         }
     }
 
+    // RP-Initiated Logout 3: "does not exactly match one of the previously registered" values;
+    // Helidon's allowlist uses an exact-string match, including percent-encoding case.
     @Test
     void logoutEndpointRouteRejectsAllowedPostLogoutRedirectUriPercentEncodingCaseMismatch() {
         OidcTenantConfig tenant = tenantConfigWithEndSessionLogout(endSession -> endSession
@@ -3354,6 +3376,8 @@ class OidcFeatureRouteTest {
         }
     }
 
+    // RP-Initiated Logout 2 calls id_token_hint "RECOMMENDED", not REQUIRED.
+    // Rejecting its omission when configured is a Helidon local security choice.
     @Test
     void logoutEndpointRouteRejectsMissingIdTokenHintWhenRequired() {
         OidcTenantConfig tenant = tenantConfigWithEndSessionLogout(_ -> { });
@@ -3379,6 +3403,8 @@ class OidcFeatureRouteTest {
         }
     }
 
+    // RP-Initiated Logout 2 calls id_token_hint "RECOMMENDED", not REQUIRED;
+    // the OP decides whether a post-logout redirect without it is sufficiently authenticated.
     @Test
     void logoutEndpointRouteCanOmitIdTokenHintWhenConfigured() {
         OidcTenantConfig tenant = tenantConfigWithEndSessionLogout(endSession -> endSession

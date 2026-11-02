@@ -71,6 +71,9 @@ class OidcTokenPropagationTest {
 
     @TestFactory
     Stream<DynamicTest> propagatedTokensRetainTheirCertificateBindingOnTheDownstreamConnection() {
+        // RFC 8705 §3, https://www.rfc-editor.org/rfc/rfc8705.html#section-3:
+        // "those requests MUST be made over a mutually authenticated TLS connection using the same certificate".
+        // Propagation is a Helidon outbound choice; it must not strip a token's sender constraint.
         return Stream.of(OidcTokenValidationMethod.JWT, OidcTokenValidationMethod.INTROSPECTION)
                 .flatMap(method -> Stream.of(true, false).flatMap(bound -> Stream.of("static", "omitted", "false", "true")
                         .map(metadataSupport -> dynamicTest(method + " bound=" + bound + " metadata=" + metadataSupport,
@@ -79,6 +82,10 @@ class OidcTokenPropagationTest {
 
     @Test
     void tokenPropagationOnlyAppliesToMatchingOutboundTarget() {
+        // RFC 6750 §2.1, https://www.rfc-editor.org/rfc/rfc6750.html#section-2.1:
+        // RFC wording: Clients SHOULD make authenticated requests with a bearer token using the
+        // "Authorization" request header field with the "Bearer" HTTP authorization scheme.
+        // The explicit outbound host/path/method match is Helidon's local token-disclosure policy.
         OidcProvider provider = provider(OidcTenantConfig.create(), ordersTarget());
         ProviderRequest request = providerRequest(subject("api://orders"));
         SecurityEnvironment outboundEnv = outboundEnvironment("https://api.example.com/orders/42", "/orders/42");

@@ -59,6 +59,12 @@ import static org.hamcrest.MatcherAssert.assertThat;
 import static org.junit.jupiter.api.DynamicTest.dynamicTest;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
+/*
+ * OIDC Discovery §3, https://openid.net/specs/openid-connect-discovery-1_0.html#ProviderMetadata:
+ * the advertised jwks_uri "MUST use the https scheme". Rejecting all JWKS HTTP redirects,
+ * including same-origin HTTPS redirects, is Helidon's stronger key-source policy, not
+ * a separate Discovery requirement. HTTP direct loading below uses an explicit TLS opt-out in this fixture.
+ */
 @Execution(ExecutionMode.SAME_THREAD)
 class OidcJwkSetRedirectTest {
     private static final String ISSUER = "https://issuer.example";

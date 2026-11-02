@@ -91,6 +91,13 @@ import static org.hamcrest.CoreMatchers.not;
 import static org.hamcrest.CoreMatchers.notNullValue;
 import static org.hamcrest.MatcherAssert.assertThat;
 
+/*
+ * RFC 7662 introspection: https://www.rfc-editor.org/rfc/rfc7662#section-2.2
+ * RFC 8705 certificate-bound tokens: https://www.rfc-editor.org/rfc/rfc8705#section-3
+ * RFC 9449 DPoP downgrade protection: https://www.rfc-editor.org/rfc/rfc9449#section-7.2
+ * Response claims such as iss, aud, and exp are optional in RFC 7662. Their configured
+ * validation, and how malformed responses affect availability, are Helidon security policy.
+ */
 @ServerTest
 @Execution(ExecutionMode.SAME_THREAD)
 class OidcIntrospectionAccessTokenValidationTest {
@@ -170,6 +177,7 @@ class OidcIntrospectionAccessTokenValidationTest {
         releaseIntrospectionResponses = null;
     }
 
+    // RFC 7662, 2.2: "REQUIRED.  Boolean indicator of whether or not the presented token" is active.
     @Test
     void validIntrospectionAuthenticatesSubject() {
         AuthenticationResponse response = authenticate(provider(tenant -> tenant.webClient(tenantWebClient())),
@@ -334,7 +342,9 @@ class OidcIntrospectionAccessTokenValidationTest {
             responseBody = validResponse(_ -> { }).toString();
             assertInvalidToken(authenticate(provider, OPAQUE_TOKEN), "wrong access-token issuer");
 
-            // RFC 7662 permits a missing iss; retain the pinned authority as the identity namespace.
+            // RFC 7662, 2.2 (https://www.rfc-editor.org/rfc/rfc7662#section-2.2):
+            // The `iss` field is labeled "OPTIONAL. String representing the issuer of this token".
+            // Helidon pins the configured authority as the identity namespace when this optional field is absent.
             responseBody = JsonObject.builder().from(validResponse(_ -> { })).unset("iss").build().toString();
             AuthenticationResponse withoutIssuer = authenticate(provider, OPAQUE_TOKEN);
             assertThat(withoutIssuer.status(), is(SecurityResponse.SecurityStatus.SUCCESS));
@@ -698,6 +708,7 @@ class OidcIntrospectionAccessTokenValidationTest {
         }
     }
 
+    // RFC 7662, 2.2: scope is "A JSON string containing a space-separated list of" scopes.
     @Test
     void standardScopeClaimMustBeStringForIntrospection() {
         responseBody = validResponse(it -> it.setStrings("scope", List.of("resource.read"))).toString();
@@ -707,6 +718,7 @@ class OidcIntrospectionAccessTokenValidationTest {
         assertInvalidToken(response, "Bearer Token introspection claims are invalid");
     }
 
+    // RFC 7662, 2.2: scope is "A JSON string containing a space-separated list of" scopes.
     @Test
     void standardScopeClaimRejectsNonSpaceDelimiterForIntrospection() {
         responseBody = validResponse(it -> it.set("scope", "resource.read\tresource.write")).toString();
@@ -773,6 +785,7 @@ class OidcIntrospectionAccessTokenValidationTest {
         assertThat(response.responseHeaders().containsKey("Location"), is(false));
     }
 
+    // RFC 7662, 2.2: an inactive token response has the "active" field set to "false".
     @Test
     void inactiveIntrospectionResponseIsRejected() {
         responseBody = JsonObject.builder()
@@ -785,6 +798,8 @@ class OidcIntrospectionAccessTokenValidationTest {
         assertInvalidToken(response, "Bearer Token introspection response is inactive");
     }
 
+    // RFC 7662, 2.2: active is "REQUIRED.  Boolean indicator"; Helidon treats its omission as
+    // an unusable upstream response, not as proof that the token itself is invalid.
     @Test
     void missingActiveIntrospectionResponseIsRejected() {
         responseBody = validResponse(it -> it.unset("active")).toString();
@@ -794,6 +809,8 @@ class OidcIntrospectionAccessTokenValidationTest {
         assertIntrospectionUnavailable(response);
     }
 
+    // RFC 7662, 2.2: iss is "OPTIONAL.  String representing the issuer of this token";
+    // matching an issuer when returned is Helidon's configured trust policy.
     @Test
     void wrongIssuerIsRejectedWhenReturned() {
         responseBody = validResponse(it -> it.set("iss", "https://other.example")).toString();
@@ -803,6 +820,8 @@ class OidcIntrospectionAccessTokenValidationTest {
         assertInvalidToken(response, "Bearer Token introspection claims are invalid");
     }
 
+    // RFC 7662, 2.2: aud is "OPTIONAL.  Service-specific string identifier or list of string";
+    // validating a returned audience against this resource is Helidon's configured trust policy.
     @Test
     void wrongAudienceIsRejectedWhenReturned() {
         responseBody = validResponse(it -> it.setStrings("aud", List.of("api://other"))).toString();
@@ -812,6 +831,7 @@ class OidcIntrospectionAccessTokenValidationTest {
         assertInvalidToken(response, "Bearer Token introspection claims are invalid");
     }
 
+    // RFC 7662, 2.2 makes aud OPTIONAL; demanding it when audience validation is enabled is Helidon policy.
     @Test
     void missingAudienceIsRejectedWhenAudienceValidationIsEnabled() {
         responseBody = validResponse(it -> it.unset("aud")).toString();
@@ -821,6 +841,7 @@ class OidcIntrospectionAccessTokenValidationTest {
         assertInvalidToken(response, "Bearer Token introspection claims are invalid");
     }
 
+    // RFC 7662, 2.2 makes aud OPTIONAL; this test covers Helidon's explicit audience-policy opt-out.
     @Test
     void audienceValidationCanBeDisabled() {
         responseBody = validResponse(it -> it.setStrings("aud", List.of("api://other"))).toString();
@@ -839,6 +860,8 @@ class OidcIntrospectionAccessTokenValidationTest {
         assertThat(response.status(), is(SecurityResponse.SecurityStatus.SUCCESS));
     }
 
+    // RFC 7662, 2.2: active=true generally means a token is "within its given time window of validity";
+    // Helidon independently checks exp when present, even if the OP marks an expired token active.
     @Test
     void expiredTokenIsRejectedWhenReturned() {
         responseBody = validResponse(it -> it.set("exp", Instant.now().minus(5, ChronoUnit.MINUTES).getEpochSecond()))
@@ -849,6 +872,7 @@ class OidcIntrospectionAccessTokenValidationTest {
         assertInvalidToken(response, "Bearer Token introspection claims are invalid");
     }
 
+    // RFC 7662, 2.2: exp is "OPTIONAL.  Integer timestamp".
     @Test
     void introspectedTokenNeedNotHaveExpirationClaim() {
         responseBody = validResponse(it -> it.unset("exp")).toString();
@@ -905,6 +929,8 @@ class OidcIntrospectionAccessTokenValidationTest {
         assertInvalidToken(response, "Bearer Token introspection claims are invalid");
     }
 
+    // RFC 7662, 2.2: exp is an "Integer timestamp, measured in the number of seconds";
+    // unlike JWT NumericDate, RFC 7662 does not allow a fractional exp response value.
     @Test
     void fractionalNumericDateIsRejectedWhenReturned() {
         responseBody = validResponse(it -> it.set("exp", 1_773_000_000.5)).toString();
@@ -914,6 +940,7 @@ class OidcIntrospectionAccessTokenValidationTest {
         assertIntrospectionUnavailable(response);
     }
 
+    // RFC 7662, 2.2: nbf is an "Integer timestamp, measured in the number of seconds".
     @Test
     void stringNumericDateIsRejectedWhenReturned() {
         responseBody = validResponse(it -> it.set("nbf", "1773000000")).toString();
@@ -933,6 +960,8 @@ class OidcIntrospectionAccessTokenValidationTest {
         assertIntrospectionUnavailable(response);
     }
 
+    // RFC 9449, 6.2 conveys jkt in cnf via introspection; 7.2: a protected resource
+    // "MUST reject a DPoP-bound access token received as a bearer token".
     @Test
     void dpopBoundIntrospectionResponseIsRejectedAsBearer() {
         responseBody = validResponse(it -> it.set("cnf", cnf -> cnf.set("jkt", "dpop-key-thumbprint")))
@@ -1009,6 +1038,7 @@ class OidcIntrospectionAccessTokenValidationTest {
         assertInvalidToken(response, "Bearer Token introspection claims are invalid");
     }
 
+    // RFC 8705, 3.2: "rejects the request if they do not match" the certificate hashes.
     @Test
     void certificateBoundIntrospectionResponseRejectsMismatchedPeerCertificate() {
         Certificate tokenCertificate = OidcTestCertificates.certificate("token-certificate");
@@ -1061,6 +1091,9 @@ class OidcIntrospectionAccessTokenValidationTest {
 
     @Test
     void unrecognizedObjectConfirmationMemberIsIgnoredWhenBindingIsOptional() {
+        // RFC 7800 §3.1, https://www.rfc-editor.org/rfc/rfc7800.html#section-3.1:
+        // "all confirmation members that are not understood by implementations MUST be ignored"
+        // absent application requirements; an explicitly REQUIRED certificate binding is such a requirement.
         responseBody = validResponse(it -> it.set("cnf", cnf -> cnf.set("future-method", "key-reference")))
                 .toString();
 

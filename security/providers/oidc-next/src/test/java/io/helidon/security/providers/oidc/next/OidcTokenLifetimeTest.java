@@ -46,6 +46,9 @@ class OidcTokenLifetimeTest {
 
     @TestFactory
     Stream<DynamicTest> unusableLifetimesAreRejectedByEveryGrantParser() {
+        // RFC 6749 Appendix A.14, https://www.rfc-editor.org/rfc/rfc6749.html#appendix-A.14:
+        // "expires-in = 1*DIGIT". Numeric zero is syntactically allowed by this ABNF but rejected
+        // here by Helidon's local policy because it cannot represent an active token lifetime.
         return PARSERS.stream().flatMap(parser -> Stream.of("0", "-1", "1.5", "-9223372036854775809",
                                                           "9223372036854775808", "1e100", "\"60\"", "null", "true", "{}", "[]")
                 .map(lifetime -> dynamicTest(parser.name() + ": expires_in=" + lifetime, () -> {
@@ -70,6 +73,9 @@ class OidcTokenLifetimeTest {
 
     @TestFactory
     Stream<DynamicTest> omittedLifetimeIsNotAnExpiredLifetime() {
+        // RFC 6749 §5.1, https://www.rfc-editor.org/rfc/rfc6749.html#section-5.1:
+        // "If omitted, the authorization server SHOULD provide the expiration time via other means".
+        // An absent expires_in is therefore unknown, not a known zero-second lifetime.
         return PARSERS.stream().map(parser -> dynamicTest(parser.name(), () ->
                 assertThat(parser.parse().apply(tokenResponse()), is(Optional.empty()))));
     }

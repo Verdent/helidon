@@ -17,15 +17,15 @@
 package io.helidon.tests.integration.security.oidcnext;
 
 import java.net.URI;
-import java.nio.charset.StandardCharsets;
-import java.util.Base64;
 import java.util.Set;
 
+import io.helidon.common.configurable.Resource;
 import io.helidon.common.uri.UriQuery;
 import io.helidon.http.HeaderNames;
 import io.helidon.http.Status;
 import io.helidon.json.JsonObject;
-import io.helidon.json.JsonParser;
+import io.helidon.security.jwt.SignedJwt;
+import io.helidon.security.jwt.jwk.JwkKeys;
 import io.helidon.security.providers.oidc.next.OidcProviderConfig;
 import io.helidon.security.providers.oidc.next.OidcRequestObjectMode;
 import io.helidon.tests.integration.security.oidcnext.OidcIntegrationSupport.BrowserSession;
@@ -92,6 +92,9 @@ class OidcParJarFlowIT {
         }
     }
 
+    // RFC 9101, 6.2 (https://www.rfc-editor.org/rfc/rfc9101#section-6.2):
+    // "The authorization server MUST validate the signature" of a JWS-signed Request Object.
+    // Our synthetic OP only assembles parameters; verify the RP's signature independently here.
     @Test
     void authorizationCodeFlowUsesSignedRequestObjectWithPushedAuthorizationRequest() {
         try (TestOidcServer idp = TestOidcServer.builder()
@@ -185,9 +188,11 @@ class OidcParJarFlowIT {
     }
 
     private static JsonObject requestObjectPayload(String requestObject) {
-        String[] parts = requestObject.split("\\.", -1);
-        assertThat(parts.length, is(3));
-        return JsonParser.create(new String(Base64.getUrlDecoder().decode(parts[1]), StandardCharsets.UTF_8))
-                .readJsonObject();
+        SignedJwt signed = SignedJwt.parseToken(requestObject);
+        assertThat(signed.getJwt().algorithm().orElseThrow(), is("RS256"));
+        assertThat(signed.getJwt().keyId().orElseThrow(), is("sign-rsa"));
+        signed.verifySignature(JwkKeys.builder().resource(Resource.create("oidc-next-it-sign-jwk.json")).build())
+                .checkValid();
+        return JsonObject.create(signed.getJwt().payloadClaimsJson());
     }
 }

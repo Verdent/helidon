@@ -80,6 +80,11 @@ import static org.hamcrest.CoreMatchers.nullValue;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.containsString;
 
+/*
+ * Refresh-response requirements quoted below are from OpenID Connect Core 1.0, 12.2:
+ * https://openid.net/specs/openid-connect-core-1_0.html#RefreshTokenResponse
+ * OAuth token-response/rotation excerpts are from https://www.rfc-editor.org/rfc/rfc6749.
+ */
 @ServerTest
 @Execution(ExecutionMode.SAME_THREAD)
 class OidcRefreshTokenManagerTest {
@@ -340,6 +345,7 @@ class OidcRefreshTokenManagerTest {
         assertThat(TOKEN_REQUEST_COUNT.get(), is(2));
     }
 
+    // RFC 6749, 6: if a new refresh token is issued, "the client MUST discard the old refresh token".
     @Test
     void localAuthenticationRefreshesExpiredAccessTokenAndRotatesRefreshToken(URI serverUri) {
         OidcTenantConfig tenant = tenant(serverUri);
@@ -642,6 +648,7 @@ class OidcRefreshTokenManagerTest {
         assertThat(RECORDED_REQUEST.get(), is(notNullValue()));
     }
 
+    // RFC 6749, 5.1: `refresh_token` is "OPTIONAL." `scope` is "OPTIONAL, if identical to the scope requested".
     @Test
     void refreshResponseWithoutRefreshTokenOrScopePreservesStoredValues(URI serverUri) {
         responseBody = refreshResponse(REFRESHED_ACCESS_TOKEN, null, null, 600).toString();
@@ -706,6 +713,7 @@ class OidcRefreshTokenManagerTest {
         assertThat(RECORDED_REQUEST.get(), is(notNullValue()));
     }
 
+    // RFC 6749, 5.1: `expires_in` is "RECOMMENDED"; an omitted lifetime has no inferred expiration.
     @Test
     void refreshResponseWithoutExpiresInPreservesUnknownAccessTokenExpiry(URI serverUri) {
         responseBody = refreshResponse(REFRESHED_ACCESS_TOKEN, ROTATED_REFRESH_TOKEN, "openid email", null).toString();
@@ -821,8 +829,7 @@ class OidcRefreshTokenManagerTest {
         assertThat(requested.status(), is(SecurityResponse.SecurityStatus.FAILURE));
         assertThat(requested.statusCode().orElseThrow(), is(Status.UNAUTHORIZED_401_CODE));
         assertThat(requested.user().isEmpty(), is(true));
-        assertThat(requested.responseHeaders().get(HeaderNames.SET_COOKIE.defaultCase())
-                           .stream().map(SetCookie::parse).allMatch(cookie -> cookie.value().isEmpty()), is(true));
+        assertLocalAuthenticationCookiesRemoved(requested, tenant);
         assertThat(TOKEN_REQUEST_COUNT.get(), is(1));
     }
 
@@ -1040,6 +1047,7 @@ class OidcRefreshTokenManagerTest {
         assertThat(RECORDED_INTROSPECTION_REQUEST.get(), is(nullValue()));
     }
 
+    // Core 12.2: a successful refresh response "might not contain an `id_token`"; a supplied token is validated.
     @Test
     void refreshedIdTokenReplacesStoredIdToken(URI serverUri) {
         String refreshedIdToken = signedIdToken(it -> it.nonce(null)
@@ -1123,6 +1131,7 @@ class OidcRefreshTokenManagerTest {
         assertThat(RECORDED_USER_INFO_AUTHORIZATION.get(), is("Bearer " + REFRESHED_ACCESS_TOKEN));
     }
 
+    // Core 5.3.2: the UserInfo `sub` "MUST be verified to exactly match the `sub` Claim in the ID Token".
     @Test
     void invalidRefreshedUserInfoClearsExpiredLocalAuthentication(URI serverUri) {
         userInfoResponseBody = userInfoResponse("other-subject", "refetched-user").toString();
@@ -1212,11 +1221,12 @@ class OidcRefreshTokenManagerTest {
             assertThat(rejected.status(), is(SecurityResponse.SecurityStatus.FAILURE));
             assertThat(rejected.statusCode().orElseThrow(), is(Status.UNAUTHORIZED_401_CODE));
             assertThat(TOKEN_REQUEST_COUNT.get(), is(1));
-            assertThat(rejected.responseHeaders().get(HeaderNames.SET_COOKIE.defaultCase())
-                               .stream().map(SetCookie::parse).allMatch(cookie -> cookie.value().isEmpty()), is(true));
+            assertLocalAuthenticationCookiesRemoved(rejected, tenant);
         }
     }
 
+    // Helidon session-binding policy: a refreshed ID Token cannot silently replace the original OP session ID.
+    // Back-Channel Logout 2.4 defines `sid` as a "String identifier for a Session" but does not mandate this check.
     @Test
     void refreshRejectsChangedOpSessionIdWhenBackChannelLogoutEnabled(URI serverUri) {
         String refreshedIdToken = signedIdToken(it -> it.nonce(null)
@@ -1236,11 +1246,11 @@ class OidcRefreshTokenManagerTest {
             assertThat(rejected.statusCode().orElseThrow(), is(Status.SERVICE_UNAVAILABLE_503_CODE));
             assertThat(rejected.user().isEmpty(), is(true));
             assertThat(TOKEN_REQUEST_COUNT.get(), is(1));
-            assertThat(rejected.responseHeaders().get(HeaderNames.SET_COOKIE.defaultCase())
-                               .stream().map(SetCookie::parse).allMatch(cookie -> cookie.value().isEmpty()), is(true));
+            assertLocalAuthenticationCookiesRemoved(rejected, tenant);
         }
     }
 
+    // Core 12.2: if refreshed `nonce` is present, "its value MUST be the same"; `auth_time` refers to the original login.
     @Test
     void refreshedIdTokenWithMatchingNonceAndAuthenticationTimeIsAccepted(URI serverUri) {
         String refreshedIdToken = signedIdToken(it -> it.addPayloadClaim("auth_time", AUTHENTICATION_TIME));
@@ -1264,6 +1274,7 @@ class OidcRefreshTokenManagerTest {
         assertThat(response.status(), is(SecurityResponse.SecurityStatus.SUCCESS));
     }
 
+    // Core 12.2: if `nonce` is present on refresh, "its value MUST be the same as in the ID Token".
     @Test
     void changedNonceInRefreshedIdTokenClearsExpiredLocalAuthentication(URI serverUri) {
         responseBody = refreshResponse(REFRESHED_ACCESS_TOKEN,
@@ -1283,6 +1294,7 @@ class OidcRefreshTokenManagerTest {
         assertAuthenticationRequestStartedAndLocalAuthenticationRemoved(response, tenant);
     }
 
+    // Core 12.2: `auth_time` "MUST represent the time of the original authentication".
     @Test
     void changedAuthenticationTimeInRefreshedIdTokenClearsExpiredLocalAuthentication(URI serverUri) {
         responseBody = refreshResponse(REFRESHED_ACCESS_TOKEN,
@@ -1307,6 +1319,7 @@ class OidcRefreshTokenManagerTest {
         assertAuthenticationRequestStartedAndLocalAuthenticationRemoved(response, tenant);
     }
 
+    // Core 12.2 leaves `azp` continuity to extensions ("might specify" it); Helidon enforces continuity as policy.
     @Test
     void changedAuthorizedPartyInRefreshedIdTokenClearsExpiredLocalAuthentication(URI serverUri) {
         responseBody = refreshResponse(REFRESHED_ACCESS_TOKEN,
@@ -1355,6 +1368,7 @@ class OidcRefreshTokenManagerTest {
         assertThat(response.responseHeaders().containsKey(HeaderNames.SET_COOKIE.defaultCase()), is(false));
     }
 
+    // Core 12.2: refreshed `sub` "MUST be the same as in the ID Token issued when the original authentication occurred".
     @Test
     void changedSubjectInRefreshedIdTokenClearsLocalAuthentication(URI serverUri) {
         responseBody = refreshResponse(REFRESHED_ACCESS_TOKEN,
@@ -1375,6 +1389,7 @@ class OidcRefreshTokenManagerTest {
         assertAuthenticationRequestStartedAndLocalAuthenticationRemoved(response, tenant);
     }
 
+    // Core 12.2: refreshed `iss` "MUST be the same as in the ID Token issued when the original authentication occurred".
     @Test
     void changedIssuerInRefreshedIdTokenClearsLocalAuthentication(URI serverUri) {
         responseBody = refreshResponse(REFRESHED_ACCESS_TOKEN,
@@ -1395,6 +1410,11 @@ class OidcRefreshTokenManagerTest {
         assertAuthenticationRequestStartedAndLocalAuthenticationRemoved(response, tenant);
     }
 
+    /*
+     * Spec: OpenID Connect Core 1.0, 12.2, Successful Refresh Response.
+     * https://openid.net/specs/openid-connect-core-1_0.html#RefreshTokenResponse
+     * Quote: "its `aud` Claim Value MUST be the same as in the ID Token issued when the original authentication occurred,"
+     */
     @Test
     void changedAudienceInRefreshedIdTokenClearsLocalAuthentication(URI serverUri) {
         responseBody = refreshResponse(REFRESHED_ACCESS_TOKEN,
@@ -1404,7 +1424,11 @@ class OidcRefreshTokenManagerTest {
                                        signedIdToken(it -> it.nonce(null)
                                                .addAudience("other-audience")
                                                .addPayloadClaim("azp", CLIENT_ID))).toString();
-        OidcTenantConfig tenant = tenant(serverUri);
+        // Ordinary ID Token validation must accept the refreshed token; only the refresh-specific
+        // audience continuity rule may reject it.
+        OidcTenantConfig tenant = OidcTenantConfig.builder(tenant(serverUri))
+                .idToken(idToken -> idToken.addTrustedAdditionalAudience("other-audience"))
+                .buildPrototype();
         Instant now = Instant.now();
         SetCookie localAuthenticationCookie = localAuthenticationCookie(tenant,
                                                                         now.minusSeconds(60),
@@ -1854,6 +1878,25 @@ class OidcRefreshTokenManagerTest {
                            .orElseThrow()
                            .token(),
                    is(expectedToken));
+    }
+
+    private static void assertLocalAuthenticationCookiesRemoved(AuthenticationResponse response, OidcTenantConfig tenant) {
+        List<SetCookie> removalCookies = response.responseHeaders().get(HeaderNames.SET_COOKIE.defaultCase())
+                .stream().map(SetCookie::parse).toList();
+        List<String> names = removalCookies.stream().map(SetCookie::name).toList();
+        assertThat(names.size(), is(OidcCookieStateHandler.MAX_COOKIE_CHUNKS));
+        String baseName = tenant.cookies().localAuthenticationCookieName();
+        for (int index = 0; index < OidcCookieStateHandler.MAX_COOKIE_CHUNKS; index++) {
+            assertThat(names.contains(index == 0 ? baseName : baseName + "." + index), is(true));
+        }
+        for (SetCookie cookie : removalCookies) {
+            assertThat(cookie.value(), is(""));
+            assertThat(cookie.path(), is(Optional.of("/")));
+            // SetCookie.toString omits Max-Age=0, so the serialized header may have no Max-Age.
+            // Expiration at the epoch is the browser-visible deletion; never allow a positive Max-Age.
+            assertThat(cookie.maxAge().orElse(Duration.ZERO), is(Duration.ZERO));
+            assertThat(cookie.expires().orElseThrow().toInstant(), is(Instant.EPOCH));
+        }
     }
 
     private static OidcLocalAuthenticationResult storedLocalAuthenticationResult(AuthenticationResponse response,

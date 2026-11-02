@@ -53,6 +53,12 @@ import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.greaterThan;
 import static org.junit.jupiter.api.DynamicTest.dynamicTest;
 
+/*
+ * RFC 9101 §8, https://www.rfc-editor.org/rfc/rfc9101.html#section-8:
+ * "Clients MUST NOT use CN-ID identifiers" applies to the Request Object URI method.
+ * These tests instead send a signed Request Object by value in a PAR POST. Helidon's extra
+ * DNS-ID requirement for that combination is a local security policy, not an RFC 9101 §8 MUST.
+ */
 class OidcWebClientFactoryTlsIdentityTest {
     private static final String CLIENT_ID = "signed-par-client";
     private static final String CLIENT_SECRET = "test-secret";
@@ -82,6 +88,10 @@ class OidcWebClientFactoryTlsIdentityTest {
 
     @Test
     void parWithoutSignedJarDoesNotAcquireStrictDnsIdPolicy() throws Exception {
+        // RFC 9525 §6.6, https://www.rfc-editor.org/rfc/rfc9525.html#section-6.6,
+        // allows prior configuration to accept a particular certificate for a peer.
+        // This test explicitly trusts the leaf before connecting and disables the test client's
+        // default hostname check. It does not assert that a default TLS client accepts CN-only identities.
         assertPar("cn-only", "localhost", false, true);
     }
 

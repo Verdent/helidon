@@ -89,6 +89,10 @@ class OidcJwkSetPolicyTest {
 
     @TestFactory
     Stream<DynamicTest> everyProviderKeySourceRejectsPrivateAndSymmetricMaterial() {
+        // OIDC Discovery §3, https://openid.net/specs/openid-connect-discovery-1_0.html#ProviderMetadata:
+        // "The JWK Set MUST NOT contain private or symmetric key values."
+        // That MUST binds the publishing OP, not the receiving RP. Rejecting leaked key material
+        // from discovered or explicitly configured OP key sources is Helidon's fail-closed policy.
         return Arrays.stream(Location.values()).flatMap(location -> Arrays.stream(Provenance.values())
                 .flatMap(provenance -> forbiddenKeys().entrySet().stream().map(entry -> dynamicTest(
                         location + "/" + provenance + "/" + entry.getKey(), () -> {
@@ -102,6 +106,10 @@ class OidcJwkSetPolicyTest {
 
     @TestFactory
     Stream<DynamicTest> everyProviderKeySourceAcceptsPublicKeysAndUnknownParameters() {
+        // RFC 7517 §4, https://www.rfc-editor.org/rfc/rfc7517.html#section-4:
+        // "Additional members can be present in the JWK; if not understood by implementations
+        // encountering them, they MUST be ignored." The Discovery private/symmetric prohibition
+        // does not ban harmless extension parameters on otherwise public verification keys.
         return Arrays.stream(Location.values()).flatMap(location -> Arrays.stream(Provenance.values())
                 .map(provenance -> dynamicTest(location + "/" + provenance, () -> {
                     JsonObject publicKey = JsonObject.builder().from(PUBLIC_KEY).set("test-annotation", "public key").build();

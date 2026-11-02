@@ -61,6 +61,8 @@ class OidcOutboundFlowIT {
     private static final String DOWNSTREAM_RESOURCE = "https://orders.example.com";
     private static final String ACCESS_TOKEN_TYPE = "urn:ietf:params:oauth:token-type:access_token";
 
+    // Rejecting work over the configured concurrency limit and recovering afterward are
+    // Helidon's local resource-control behavior, not OAuth client-credentials requirements.
     @Test
     void clientCredentialsOverloadAddsNoCredentialAndRecoversThroughWebClient() throws Exception {
         CountDownLatch tokenEntered = new CountDownLatch(1);
@@ -134,6 +136,10 @@ class OidcOutboundFlowIT {
         }
     }
 
+    // RFC 6750 §2.1 (https://www.rfc-editor.org/rfc/rfc6750.html#section-2.1):
+    // "Clients SHOULD make authenticated requests with a bearer token using the
+    // \"Authorization\" request header field with the \"Bearer\" HTTP authorization scheme."
+    // The synthetic downstream observes propagation, but does not validate the bearer token.
     @Test
     void outboundTargetPropagatesCurrentBearerTokenThroughWebClient() {
         AtomicReference<String> downstreamAuthorization = new AtomicReference<>();
@@ -168,6 +174,9 @@ class OidcOutboundFlowIT {
         }
     }
 
+    // RFC 6749 §4.4.2 (https://www.rfc-editor.org/rfc/rfc6749.html#section-4.4.2):
+    // "Value MUST be set to \"client_credentials\"" for the token request's grant_type.
+    // RFC 8707 §2.2 permits resource on token requests; this test checks the chosen target.
     @Test
     void outboundTargetObtainsClientCredentialsTokenThroughWebClient() {
         AtomicReference<String> downstreamAuthorization = new AtomicReference<>();
@@ -196,6 +205,8 @@ class OidcOutboundFlowIT {
         }
     }
 
+    // Bypassing the outbound security interceptor for the provider's own HTTP calls avoids
+    // self-interception and is Helidon-specific, not a separate OAuth requirement.
     @Test
     @Timeout(10)
     void providerOwnedTrafficBypassesConfiguredWebClientSecurity() {
@@ -243,6 +254,10 @@ class OidcOutboundFlowIT {
         }
     }
 
+    // RFC 8693 §2.1 (https://www.rfc-editor.org/rfc/rfc8693.html#section-2.1):
+    // "REQUIRED. The value `urn:ietf:params:oauth:grant-type:token-exchange` indicates that a token exchange is being performed."
+    // The fake OP captures subject_token, token types, resource, audience and scope;
+    // this synthetic downstream only observes the forwarded bearer header.
     @Test
     void outboundTargetExchangesCurrentBearerTokenThroughWebClient() {
         AtomicReference<String> downstreamAuthorization = new AtomicReference<>();

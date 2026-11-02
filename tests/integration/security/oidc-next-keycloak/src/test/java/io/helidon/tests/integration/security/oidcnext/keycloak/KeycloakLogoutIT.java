@@ -66,11 +66,14 @@ class KeycloakLogoutIT {
     static final GenericContainer<?> CONTAINER = KeycloakOidcContainer.CONTAINER;
     private static final long RACE_TIMEOUT_SECONDS = 30;
 
+    // RP-Initiated Logout 1.0, 2: "An RP requests that the OP log out the End-User by redirecting" the browser.
+    // Clearing the RP's own session cookie first is permitted by section 2 and is Helidon's chosen behavior.
     @Test
     void localLogoutRedirectsToKeycloakEndSessionEndpointAndClearsLocalCookie() {
         OidcProviderConfig providerConfig = KeycloakOidcIntegrationSupport.authorizationCodeProviderConfig(
                 _ -> {
                 });
+        String cookieName = providerConfig.tenants().get("default").cookies().localAuthenticationCookieName();
         WebServer rpServer = KeycloakOidcIntegrationSupport.rpServer(
                 providerConfig,
                 routing -> KeycloakOidcIntegrationSupport.protectedRoute(routing, "/resource"));
@@ -78,6 +81,7 @@ class KeycloakLogoutIT {
             URI rpBaseUri = KeycloakOidcIntegrationSupport.rpBaseUri(rpServer);
             URI resourceUri = rpBaseUri.resolve("/resource");
             KeycloakOidcIntegrationSupport.authenticate(browser, resourceUri);
+            assertThat(browser.cookieValue(cookieName).isPresent(), is(true));
 
             URI localLogout = rpBaseUri.resolve("/oidc/logout");
             URI endSessionUri;
@@ -88,6 +92,10 @@ class KeycloakLogoutIT {
                 assertThat(logout.status(), is(Status.SEE_OTHER_303));
                 endSessionUri = URI.create(logout.headers().first(HeaderNames.LOCATION).orElseThrow());
             }
+            // The browser fixture applies the removal Set-Cookie headers; prove it discarded the cookie.
+            assertThat(browser.cookieValue(cookieName).isEmpty(), is(true));
+            assertThat(List.of(browser.cookieHeader().orElse("").split("; ")).stream()
+                               .anyMatch(entry -> entry.startsWith(cookieName + ".")), is(false));
 
             UriQuery endSessionQuery = UriQuery.create(endSessionUri);
             assertThat(endSessionQuery.contains("id_token_hint"), is(true));

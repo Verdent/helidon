@@ -42,16 +42,24 @@ class OidcPrincipalIdentityIT {
     private static final String TENANT_HEADER_NAME = "X-Test-Tenant";
     private static final HeaderName TENANT_HEADER = HeaderNames.create(TENANT_HEADER_NAME);
 
+    // OIDC Core 1.0 §5.7 (https://openid.net/specs/openid-connect-core-1_0.html):
+    // "the only guaranteed unique identifier for a given End-User is the combination of
+    // the `iss` Claim and the `sub` Claim." These fixtures issue service access tokens,
+    // not ID Tokens: cross-issuer service-principal separation is Helidon's analogous policy.
     @Test
     void jwtIdentityDoesNotAuthorizeAnotherIssuersSubject() {
         verifyOwnershipIsolation(OidcTokenValidationMethod.JWT);
     }
 
+    // Same cross-issuer service-principal isolation, with the identity supplied by the OP's
+    // introspection response rather than by local JWT verification.
     @Test
     void introspectedIdentityDoesNotAuthorizeAnotherIssuersSubject() {
         verifyOwnershipIsolation(OidcTokenValidationMethod.INTROSPECTION);
     }
 
+    // Equal identity for the *same* issuer/subject in both validation modes is a
+    // Helidon mapping invariant, not a separate OIDC requirement for service tokens.
     @Test
     void jwtAndIntrospectionGiveTheSameIdentityForTheSameToken() {
         try (TestOidcServer idp = identityProvider()) {

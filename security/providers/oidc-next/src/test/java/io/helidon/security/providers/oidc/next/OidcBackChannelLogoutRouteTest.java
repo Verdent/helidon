@@ -54,6 +54,12 @@ import static org.hamcrest.CoreMatchers.is;
 import static org.hamcrest.CoreMatchers.notNullValue;
 import static org.hamcrest.MatcherAssert.assertThat;
 
+/*
+ * OpenID Connect Back-Channel Logout 1.0 incorporating errata set 1:
+ * https://openid.net/specs/openid-connect-backchannel-1_0.html
+ * In-memory revocation retention/restart behavior below is a documented Helidon deployment choice,
+ * not a promise that past logout events survive application restarts.
+ */
 class OidcBackChannelLogoutRouteTest {
     private static final String ISSUER = "https://issuer.example";
     private static final String CLIENT_ID = "client-id";
@@ -71,6 +77,8 @@ class OidcBackChannelLogoutRouteTest {
                 .getResource("oidc-next-verify-public-jwk.json").toURI();
     }
 
+    // Back-Channel Logout 2.7: "The RP then clears any state associated with the identified session(s)."
+    // 2.8: "If the logout succeeded, the RP MUST respond with HTTP 200 OK."
     @Test
     void signedOpPostRevokesCookieOnNextRequestWithoutBrowserAtTheWebhook() {
         OidcTenantConfig tenant = tenant();
@@ -107,6 +115,8 @@ class OidcBackChannelLogoutRouteTest {
         }
     }
 
+    // Back-Channel Logout 2.8: "If the logout request was invalid or the logout failed,
+    // the RP MUST respond with HTTP 400 Bad Request."
     @Test
     void invalidLogoutTokenReturns400WithoutChangingAnExistingSession() {
         OidcTenantConfig tenant = tenant();
@@ -134,6 +144,8 @@ class OidcBackChannelLogoutRouteTest {
         }
     }
 
+    // Back-Channel Logout 2.5: "must include a `logout_token` parameter";
+    // a malformed or duplicated form value cannot authorize session revocation.
     @Test
     void malformedLogoutPostsDoNotRevokeAnExistingSession() {
         TestStore store = new TestStore();
@@ -295,6 +307,8 @@ class OidcBackChannelLogoutRouteTest {
         }
     }
 
+    // Back-Channel Logout 2.7: "locates the session(s) identified by the `iss` and `sub` Claims
+    // and/or the `sid` Claim"; a request for an already logged-out user succeeds.
     @Test
     void subjectOnlyLogoutRevokesExistingSessionsButNotNewLoginOrDuplicateDelivery() {
         OidcTenantConfig tenant = tenant();
@@ -324,6 +338,8 @@ class OidcBackChannelLogoutRouteTest {
         }
     }
 
+    // Helidon in-memory policy: forgotten logout events do not force a global re-login after restart;
+    // deployments needing durable invalidation must supply a shared/durable logout store.
     @Test
     void oldProtectedCookiesContinueAfterProviderRestartEvenIfLogoutWasReceived() {
         OidcTenantConfig tenant = tenant();
@@ -381,6 +397,8 @@ class OidcBackChannelLogoutRouteTest {
         }
     }
 
+    // Back-Channel Logout 2.8 requires HTTP 400 when "the logout failed";
+    // failing closed on a temporarily unavailable store is a Helidon security policy.
     @Test
     void unavailableStoreNeitherAuthenticatesCookieNorAcknowledgesLogout() {
         TestStore store = new TestStore();

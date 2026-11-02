@@ -36,6 +36,11 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 class OidcJwtAccessTokenConfigTest {
     @Test
     void defaultTokenValidationRetainsRfc9068Profile() {
+        // RFC 9068 §4, https://www.rfc-editor.org/rfc/rfc9068.html#section-4:
+        // RFC wording: The resource server MUST verify that the "typ" header value is "at+jwt" or
+        // "application/at+jwt" and reject tokens carrying any other value.
+        // Choosing RFC 9068 as the configured JWT strategy's default is Helidon's own default;
+        // an explicit CUSTOM profile opts into other locally configured validation requirements.
         assertThat(OidcTokenValidationConfig.create().jwt().isEmpty(), is(true));
         OidcTokenValidationConfig validation = OidcTenantConfig.builder()
                 .issuer("https://issuer.example")

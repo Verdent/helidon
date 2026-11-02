@@ -37,6 +37,9 @@ class KeycloakAuthorizationCodeIT {
     @Container
     static final GenericContainer<?> CONTAINER = KeycloakOidcContainer.CONTAINER;
 
+    // OIDC Core 1.0 §3.1 (https://openid.net/specs/openid-connect-core-1_0.html#CodeFlowAuth):
+    // "When using the Authorization Code Flow, all tokens are returned from the Token Endpoint."
+    // This is a live-provider happy-path smoke test; wrong-issuer/nonce/signature cases are separate tests.
     @Test
     void browserAuthorizationCodeFlowAuthenticatesProtectedResourceWithKeycloak() {
         OidcProviderConfig providerConfig = KeycloakOidcIntegrationSupport.authorizationCodeProviderConfig();

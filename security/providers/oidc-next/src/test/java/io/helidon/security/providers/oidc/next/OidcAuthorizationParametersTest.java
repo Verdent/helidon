@@ -41,6 +41,11 @@ import static org.hamcrest.Matchers.is;
 import static org.hamcrest.Matchers.not;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
+/* Core 1.0: https://openid.net/specs/openid-connect-core-1_0.html#ClaimsParameter
+ * RFC 8707: https://www.rfc-editor.org/rfc/rfc8707.html#section-2
+ * RFC 9396: https://www.rfc-editor.org/rfc/rfc9396.html#section-2
+ * Snapshotting and reserved-name/extension validation are Helidon API rules.
+ */
 class OidcAuthorizationParametersTest {
     @Test
     void snapshotsCallerMapsAndListsAndProtectsAccessors() {
@@ -63,6 +68,8 @@ class OidcAuthorizationParametersTest {
         assertThat(request.toString(), not(containsString("first")));
     }
 
+    // Core 5.5: claims has "a JSON object listing the requested Claims";
+    // RFC 8707, 2.1: multiple resource values in a JWT are "an array of strings".
     @Test
     void distinguishesStructuredArraysFromRepeatedStringsAndPreservesLookalikes() {
         JsonArray details = JsonArray.create(List.of(JsonObject.builder().set("type", "payment").build()));
@@ -94,6 +101,8 @@ class OidcAuthorizationParametersTest {
         assertThrows(IllegalStateException.class, () -> OidcAuthorizationParameterSupport.requiredString(request, "max_age"));
     }
 
+    // Core 3.1.2.1: max_age "Specifies the allowable elapsed time in seconds";
+    // keeping its JSON number integral is Helidon's transport representation policy.
     @Test
     void serializesIntegralMaxAgeAsWholeSecondsInBothTransports() {
         for (BigDecimal age : List.of(new BigDecimal("300.0"), new BigDecimal("3E+2"))) {
@@ -131,6 +140,9 @@ class OidcAuthorizationParametersTest {
         assertThrows(NullPointerException.class, () -> adapter.authorizationRequest(tenant, "default", environment, null));
     }
 
+    // RFC 8707, 2: resource "MUST be an absolute URI" and "MUST NOT include a fragment component";
+    // Core 5.5: claims is "a JSON object"; RFC 9396, 2: authorization_details contains "an array of objects".
+    // Other checks here (e.g., special-name reservations and Long bounds) are Helidon API policy.
     @Test
     void validatesStandardTypesCardinalityAndReservedNames() {
         for (Map.Entry<String, List<JsonValue>> invalid : List.of(

@@ -56,6 +56,11 @@ import static org.hamcrest.CoreMatchers.sameInstance;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
+/*
+ * HTTP freshness and Age references: https://www.rfc-editor.org/rfc/rfc9111
+ * Distinguish the HTTP response cache from Helidon's explicitly bounded parsed-key reuse;
+ * limiting key lifetime or refusing malformed cache metadata is local security policy.
+ */
 class OidcJwkSetHttpCacheTest {
     private static final Instant START = Instant.parse("2026-10-08T12:00:00Z");
     private static final String ORIGINAL = Resource.create("oidc-next-verify-public-jwk.json").string();
@@ -113,6 +118,8 @@ class OidcJwkSetHttpCacheTest {
         }
     }
 
+    // RFC 9111, 5.1 defines Age as "a non-negative integer"; refusing rather than ignoring an
+    // invalid Age value is the local key-source fail-closed policy.
     @Test
     void invalidAgeDoesNotPublishKeysAndCanBeRetried() {
         for (String invalidAge : List.of("-1", "1.5", "unknown", "9223372036854775808", "unknown, 90")) {
@@ -134,6 +141,8 @@ class OidcJwkSetHttpCacheTest {
         }
     }
 
+    // RFC 9111, 5.1: a cache encountering list-based Age "SHOULD use the first member of
+    // the field value, discarding subsequent ones".
     @Test
     void separateAgeFieldsUseTheFirstValue() {
         MutableClock clock = new MutableClock();
@@ -152,6 +161,7 @@ class OidcJwkSetHttpCacheTest {
         }
     }
 
+    // RFC 9111, 5.1: "SHOULD use the first member of the field value, discarding subsequent ones".
     @Test
     void commaSeparatedAgeUsesTheFirstMember() {
         for (String age : List.of("90, 360", "90, unknown")) {
@@ -181,6 +191,9 @@ class OidcJwkSetHttpCacheTest {
         }
     }
 
+    // RFC 9111, 4.2.1: "either the first occurrence should be used or the response should
+    // be considered stale." Choosing the shortest lifetime is Helidon's bounded *parsed-key*
+    // retention policy; this is not an assertion about a general-purpose HTTP cache.
     @Test
     void repeatedCacheControlFieldsUseTheShortestFreshAndStaleWindows() {
         MutableClock clock = new MutableClock();
@@ -269,6 +282,7 @@ class OidcJwkSetHttpCacheTest {
         assertThat(manager.jwkKeys().forKeyId("sign-rsa").isEmpty(), is(true));
     }
 
+    // RFC 9111, 4.2.1: freshness rules use the "first match"; max-age precedes Expires.
     @Test
     void expiresAppliesOnlyWhenMaxAgeIsAbsent() {
         MutableClock clock = new MutableClock();
@@ -366,6 +380,8 @@ class OidcJwkSetHttpCacheTest {
         }
     }
 
+    // Helidon keeps a bounded *parsed key set*, not an HTTP-cache response; HTTP no-store does
+    // not by itself impose a prohibition on retaining trusted key material in the application.
     @Test
     void noStoreDoesNotPreventBoundedApplicationKeyReuseOrUnknownKidRefresh() {
         MutableClock clock = new MutableClock();

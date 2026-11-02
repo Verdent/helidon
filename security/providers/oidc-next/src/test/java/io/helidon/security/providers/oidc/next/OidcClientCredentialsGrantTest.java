@@ -83,6 +83,12 @@ import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.containsString;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
+/* OAuth 2.0 client-credentials request: https://www.rfc-editor.org/rfc/rfc6749.html#section-4.4.2
+ * OIDC client authentication: https://openid.net/specs/openid-connect-core-1_0.html#ClientAuthentication
+ * mTLS endpoint aliases: https://www.rfc-editor.org/rfc/rfc8705.html#section-5
+ * Resource indicators: https://www.rfc-editor.org/rfc/rfc8707.html#section-2
+ * Endpoint/target selection and cache admission tests in this class assert Helidon policy, not these RFCs.
+ */
 @ServerTest
 @Execution(ExecutionMode.SAME_THREAD)
 class OidcClientCredentialsGrantTest {
@@ -187,6 +193,8 @@ class OidcClientCredentialsGrantTest {
         releaseMetadataResponse = null;
     }
 
+    // RFC 6749, 4.4.2: grant_type "MUST be set to \"client_credentials\"";
+    // RFC 6749, 2.3.1: the client password is form-encoded when used with HTTP Basic.
     @Test
     void clientCredentialsGrantObtainsTokenAndUsesClientSecretBasic() {
         OidcProvider provider = provider(confidentialTenant(null, tenant -> tenant.webClient(tenantWebClient())));
@@ -231,6 +239,7 @@ class OidcClientCredentialsGrantTest {
         assertThat(response.requestHeaders().containsKey("authorization"), is(false));
     }
 
+    // RFC 6749, 2.3.1: "the authorization server MAY support including the client credentials in the request-body".
     @Test
     void clientCredentialsGrantCanUseClientSecretPost() {
         OidcProvider provider = provider(confidentialTenant(OidcClientAuthenticationMethod.CLIENT_SECRET_POST));
@@ -247,6 +256,8 @@ class OidcClientCredentialsGrantTest {
                                                        "client_secret", List.of(CLIENT_SECRET))));
     }
 
+    // Core 9: client_secret_jwt clients "create a JWT using an HMAC SHA algorithm";
+    // Core 9: client_assertion_type "MUST be \"urn:ietf:params:oauth:client-assertion-type:jwt-bearer\"".
     @Test
     void clientCredentialsGrantCanUseClientSecretJwt() {
         OidcProvider provider = provider(confidentialTenant(OidcClientAuthenticationMethod.CLIENT_SECRET_JWT));
@@ -269,6 +280,8 @@ class OidcClientCredentialsGrantTest {
         assertThat(signedJwt.getJwt().algorithm().orElse(""), is("HS256"));
     }
 
+    // Core 9: private_key_jwt clients "sign a JWT using that key";
+    // RFC 7523, 2.2: "The value of the \"client_assertion\" parameter contains a single JWT."
     @Test
     void clientCredentialsGrantCanUsePrivateKeyJwt() {
         OidcProvider provider = provider(privateKeyJwtTenant());
@@ -292,6 +305,7 @@ class OidcClientCredentialsGrantTest {
         assertThat(signedJwt.getJwt().keyId().orElse(""), is("sign-rsa"));
     }
 
+    // RFC 8705, 2.1.1: tls_client_auth uses "the PKI method of associating a certificate to a client".
     @Test
     void clientCredentialsGrantCanUseTlsClientAuth() {
         OidcProvider provider = provider(mutualTlsTenant(OidcClientAuthenticationMethod.TLS_CLIENT_AUTH));
@@ -307,6 +321,7 @@ class OidcClientCredentialsGrantTest {
                                                        "client_id", List.of(CLIENT_ID))));
     }
 
+    // RFC 8705, 2.2.1: "mutual TLS with the client utilizing a self-signed certificate".
     @Test
     void clientCredentialsGrantCanUseSelfSignedTlsClientAuth() {
         OidcProvider provider = provider(mutualTlsTenant(OidcClientAuthenticationMethod.SELF_SIGNED_TLS_CLIENT_AUTH));
@@ -322,6 +337,7 @@ class OidcClientCredentialsGrantTest {
                                                        "client_id", List.of(CLIENT_ID))));
     }
 
+    // RFC 8705, 5: mTLS clients "MUST use the alias URL of the endpoint within the `mtls_endpoint_aliases`".
     @Test
     void tlsClientAuthUsesWellKnownTokenEndpointAlias() {
         providerMetadata = JsonObject.builder()
@@ -344,6 +360,7 @@ class OidcClientCredentialsGrantTest {
         assertThat(RECORDED_REQUEST.get().path(), is("/mtls-token"));
     }
 
+    // RFC 8705, 5: mTLS clients "MUST use the alias URL of the endpoint within the `mtls_endpoint_aliases`".
     @Test
     void selfSignedTlsClientAuthUsesWellKnownTokenEndpointAlias() {
         providerMetadata = JsonObject.builder()
@@ -367,6 +384,7 @@ class OidcClientCredentialsGrantTest {
         assertThat(RECORDED_REQUEST.get().path(), is("/mtls-token"));
     }
 
+    // RFC 8705, 5: "When an endpoint is not present in `mtls_endpoint_aliases`, then the client uses the conventional endpoint URL".
     @Test
     void mutualTlsClientCredentialsGrantUsesWellKnownTokenEndpointWhenAliasIsMissing() {
         providerMetadata = JsonObject.builder()
@@ -386,6 +404,8 @@ class OidcClientCredentialsGrantTest {
         assertThat(RECORDED_REQUEST.get().path(), is("/token"));
     }
 
+    // RFC 8705, 5: an mTLS client "MUST use the alias URL" when advertised.
+    // Choosing that alias even with an explicit conventional endpoint override is Helidon's configuration policy.
     @Test
     void staticTokenEndpointDoesNotOverrideWellKnownMutualTlsAlias() {
         providerMetadata = JsonObject.builder()
@@ -413,6 +433,7 @@ class OidcClientCredentialsGrantTest {
         assertThat(RECORDED_REQUEST.get().path(), is("/mtls-token"));
     }
 
+    // RFC 8705, 5: the alias is for "an OAuth client intending to do mutual TLS"; this client does not use mTLS.
     @Test
     void nonMutualTlsClientCredentialsGrantIgnoresWellKnownTokenEndpointAlias() {
         providerMetadata = JsonObject.builder()
@@ -597,6 +618,7 @@ class OidcClientCredentialsGrantTest {
         assertThat(REQUEST_COUNT.get(), is(1));
     }
 
+    // RFC 6749, 4.4.2: scope is "OPTIONAL. The scope of the access request".
     @Test
     void outboundTargetClientCredentialsGrantCanRequestScope() {
         OidcProvider provider = provider(confidentialTenant(),
@@ -613,6 +635,7 @@ class OidcClientCredentialsGrantTest {
                              "scope", List.of("orders.write orders.read"))));
     }
 
+    // RFC 8707, 2: "Multiple `resource` parameters MAY be used" to request multiple target resources.
     @Test
     void outboundTargetClientCredentialsGrantCanRequestResources() {
         OidcProvider provider = provider(confidentialTenant(),
@@ -630,6 +653,7 @@ class OidcClientCredentialsGrantTest {
                              "resource", List.of("https://orders.example.com", "api://inventory"))));
     }
 
+    // RFC 8707, 2.2: the client "can indicate the desired scope ... using the `scope` parameter".
     @Test
     void outboundTargetClientCredentialsGrantCanRequestScopeAndResources() {
         OidcProvider provider = provider(confidentialTenant(),

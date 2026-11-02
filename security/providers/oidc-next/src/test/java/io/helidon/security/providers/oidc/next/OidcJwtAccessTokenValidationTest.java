@@ -53,6 +53,7 @@ import io.helidon.json.JsonBoolean;
 import io.helidon.json.JsonNull;
 import io.helidon.json.JsonNumber;
 import io.helidon.json.JsonObject;
+import io.helidon.json.JsonParser;
 import io.helidon.json.JsonString;
 import io.helidon.json.JsonValue;
 import io.helidon.security.AuthenticationResponse;
@@ -86,6 +87,13 @@ import static org.hamcrest.CoreMatchers.sameInstance;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
+/*
+ * RFC 9068 JWT access-token profile: https://www.rfc-editor.org/rfc/rfc9068#section-4
+ * RFC 8705 certificate binding: https://www.rfc-editor.org/rfc/rfc8705#section-3
+ * RFC 9449 DPoP downgrade protection: https://www.rfc-editor.org/rfc/rfc9449#section-7.2
+ * Tests of CUSTOM layouts and explicit validation opt-outs exercise Helidon configuration,
+ * not conformance to the RFC 9068 resource-server profile.
+ */
 @ServerTest
 class OidcJwtAccessTokenValidationTest {
     private static final URI ISSUER = URI.create("https://issuer.example");
@@ -181,6 +189,7 @@ class OidcJwtAccessTokenValidationTest {
         remoteJwkSetResponseLatch.set(null);
     }
 
+    // RFC 9068, 4: "The resource server MUST use the keys provided by the authorization server."
     @Test
     void validJwtAccessTokenAuthenticatesSubject() {
         String token = signedToken(it -> it.email("user1@example.org")
@@ -209,6 +218,7 @@ class OidcJwtAccessTokenValidationTest {
         assertThat(credential.getTokenInstance(SignedJwt.class).isPresent(), is(true));
     }
 
+    // RFC 9068, 4: "The current time MUST be before" the expiration time.
     @Test
     void jwtAccessTokenExpiresAtTheClockSkewAdjustedBoundary() {
         for (Duration skew : List.of(Duration.ZERO, Duration.ofMinutes(1))) {
@@ -406,6 +416,7 @@ class OidcJwtAccessTokenValidationTest {
         assertThat(subject.principal().abacAttributeRaw("id"), is(subject.principal().id()));
     }
 
+    // RFC 8693, 4.2: "The value of the `scope` claim is a JSON string".
     @Test
     void standardScopeClaimMustBeStringForJwtAccessToken() {
         String token = signedToken(it -> it.addPayloadClaim("scope", List.of("resource.read")));
@@ -415,6 +426,7 @@ class OidcJwtAccessTokenValidationTest {
         assertInvalidToken(response, "Bearer Token JWT claims are invalid");
     }
 
+    // RFC 8693, 4.2: "a space-separated list of scopes associated with the token".
     @Test
     void standardScopeClaimRejectsNonSpaceDelimiterForJwtAccessToken() {
         String token = signedToken(it -> it.addPayloadClaim("scope", "resource.read\tresource.write"));
@@ -434,6 +446,8 @@ class OidcJwtAccessTokenValidationTest {
         assertInvalidToken(response, "Bearer Token JWT claims are invalid");
     }
 
+    // RFC 9449, 7.2: "MUST reject a DPoP-bound access token received as a bearer token".
+    // Helidon does not implement the DPoP authentication scheme, so it fails closed here.
     @Test
     void dpopBoundJwtAccessTokenIsRejectedAsBearer() {
         String token = signedToken(it -> it.addPayloadClaim("cnf", JsonObject.builder()
@@ -445,6 +459,8 @@ class OidcJwtAccessTokenValidationTest {
         assertInvalidToken(response, "Bearer Token JWT claims are invalid");
     }
 
+    // RFC 9449, 7.2: "MUST reject a DPoP-bound access token received as a bearer token".
+    // A separate x5t#S256 confirmation cannot stand in for the required DPoP proof.
     @Test
     void dpopBoundJwtAccessTokenIsRejectedEvenWithMatchingCertificateBoundClaim() {
         Certificate certificate = OidcTestCertificates.certificate("client-certificate");
@@ -460,6 +476,7 @@ class OidcJwtAccessTokenValidationTest {
         assertInvalidToken(response, "Bearer Token JWT claims are invalid");
     }
 
+    // RFC 8705, 3: "MUST verify that the certificate matches the certificate associated with the access token."
     @Test
     void certificateBoundJwtAccessTokenIsRejectedAsBearer() {
         String token = signedToken(it -> it.addPayloadClaim("cnf", JsonObject.builder()
@@ -471,6 +488,7 @@ class OidcJwtAccessTokenValidationTest {
         assertInvalidToken(response, "Bearer Token JWT claims are invalid");
     }
 
+    // RFC 8705, 3: "MUST verify that the certificate matches the certificate associated with the access token."
     @Test
     void certificateBoundJwtAccessTokenAuthenticatesWithMatchingPeerCertificate() {
         Certificate certificate = OidcTestCertificates.certificate("client-certificate");
@@ -485,6 +503,8 @@ class OidcJwtAccessTokenValidationTest {
         assertThat(response.status(), is(SecurityResponse.SecurityStatus.SUCCESS));
     }
 
+    // RFC 8705 §3 (https://www.rfc-editor.org/rfc/rfc8705.html#section-3): the protected
+    // resource "MUST verify that the certificate matches the certificate associated with the access token."
     @Test
     void certificateBoundJwtAccessTokenAuthenticatesWhenRequiredWithMatchingPeerCertificate() {
         Certificate certificate = OidcTestCertificates.certificate("client-certificate");
@@ -499,6 +519,7 @@ class OidcJwtAccessTokenValidationTest {
         assertThat(response.status(), is(SecurityResponse.SecurityStatus.SUCCESS));
     }
 
+    // RFC 8705, 3: "MUST verify that the certificate matches the certificate associated with the access token."
     @Test
     void certificateBoundJwtAccessTokenRequiresPeerCertificate() {
         Certificate certificate = OidcTestCertificates.certificate("client-certificate");
@@ -512,6 +533,7 @@ class OidcJwtAccessTokenValidationTest {
         assertInvalidToken(response, "Bearer Token JWT claims are invalid");
     }
 
+    // RFC 8705, 3: "If they do not match, the resource access attempt MUST be rejected with an error".
     @Test
     void certificateBoundJwtAccessTokenRejectsMismatchedPeerCertificate() {
         Certificate tokenCertificate = OidcTestCertificates.certificate("token-certificate");
@@ -527,6 +549,7 @@ class OidcJwtAccessTokenValidationTest {
         assertInvalidToken(response, "Bearer Token JWT claims are invalid");
     }
 
+    // RFC 8705, 3.1: "The base64url-encoded value MUST omit all trailing pad '=' characters".
     @Test
     void certificateBoundJwtAccessTokenRejectsMalformedThumbprint() {
         String token = signedToken(it -> it.addPayloadClaim("cnf", JsonObject.builder()
@@ -540,6 +563,9 @@ class OidcJwtAccessTokenValidationTest {
         assertInvalidToken(response, "Bearer Token JWT claims are invalid");
     }
 
+    // RFC 7800 §3.1 (https://www.rfc-editor.org/rfc/rfc7800.html#section-3.1):
+    // Other members of the "cnf" object may be defined; a non-object `cnf` is not an
+    // understood confirmation member. Rejecting the malformed shape is Helidon's parsing policy.
     @Test
     void presentNonObjectConfirmationClaimIsRejectedInEveryMode() {
         List<JsonValue> malformedClaims = List.of(JsonString.create("not-an-object"),
@@ -564,6 +590,9 @@ class OidcJwtAccessTokenValidationTest {
 
     @Test
     void unrecognizedObjectConfirmationMemberIsIgnoredWhenBindingIsOptional() {
+        // RFC 7800 §3.1, https://www.rfc-editor.org/rfc/rfc7800.html#section-3.1:
+        // "all confirmation members that are not understood by implementations MUST be ignored"
+        // in the absence of application requirements; REQUIRED binding is such a local requirement.
         String token = signedToken(it -> it.addPayloadClaim("cnf", JsonObject.builder()
                 .set("future-method", "key-reference")
                 .build()));
@@ -576,6 +605,8 @@ class OidcJwtAccessTokenValidationTest {
                            "Bearer Token JWT claims are invalid");
     }
 
+    // RFC 8705 §3 constrains *certificate-bound* access tokens; an unbound access token
+    // is accepted under Helidon's explicit IF_PRESENT mode, not because the RFC mandates it.
     @Test
     void unboundJwtAccessTokenAuthenticatesWhenCertificateBindingIsIfPresent() {
         String token = signedToken(_ -> { });
@@ -586,6 +617,8 @@ class OidcJwtAccessTokenValidationTest {
         assertThat(response.status(), is(SecurityResponse.SecurityStatus.SUCCESS));
     }
 
+    // RFC 8705 §3: if bound-token certificate proofs "do not match, the resource access attempt
+    // MUST be rejected". Requiring binding for *all* tokens is this tenant's stricter local policy.
     @Test
     void unboundJwtAccessTokenIsRejectedWhenCertificateBindingIsRequired() {
         String token = signedToken(_ -> { });
@@ -673,6 +706,9 @@ class OidcJwtAccessTokenValidationTest {
         assertThat(remoteJwkSetRequests.get(), is(1));
     }
 
+    // OIDC Discovery §3 (https://openid.net/specs/openid-connect-discovery-1_0.html#ProviderMetadata):
+    // jwks_uri contains the "signing key(s) the RP uses to validate signatures from the OP".
+    // This tenant opts into discovery for its access-token verification key source as well.
     @Test
     void wellKnownMetadataJwksEndpointAuthenticatesSubject() {
         String token = signedToken(jwt -> jwt.issuer(discoveryIssuer.toString()));
@@ -688,6 +724,8 @@ class OidcJwtAccessTokenValidationTest {
         assertThat(remoteJwkSetWebClientHeader.get(), is(TENANT_WEBCLIENT_HEADER_VALUE));
     }
 
+    // OIDC Discovery §3: "The JWK Set MUST NOT contain private or symmetric key values."
+    // A malicious OP JWKS with a symmetric octet key cannot be used as public verification keys.
     @Test
     void wellKnownMetadataJwksEndpointRejectsSymmetricKeyValues() {
         remoteJwkSetResponses.set(new ArrayDeque<>(List.of("""
@@ -701,16 +739,24 @@ class OidcJwtAccessTokenValidationTest {
         assertThat(remoteJwkSetRequests.get(), is(1));
     }
 
+    // OIDC Discovery §3: "The JWK Set MUST NOT contain private or symmetric key values."
+    // Use a complete, usable RSA key: a malformed JWK could fail before the private-key policy is checked.
     @Test
     void wellKnownMetadataJwksEndpointRejectsPrivateKeyValues() {
-        remoteJwkSetResponses.set(new ArrayDeque<>(List.of("""
-                {"keys":[{"kty":"RSA","kid":"verify-rsa","d":"private"}]}
-                """)));
+        JsonObject privateKey = JsonParser.create(Resource.create("oidc-next-sign-jwk.json").string())
+                .readJsonObject().arrayValue("keys").orElseThrow().values().getFirst().asObject();
+        remoteJwkSetResponses.set(new ArrayDeque<>(List.of("{\"keys\":[" + privateKey + "]}")));
         String token = signedToken(jwt -> jwt.issuer(discoveryIssuer.toString()));
 
-        AuthenticationResponse response = authenticate(wellKnownProvider(_ -> { }), token);
+        try (OidcProvider provider = wellKnownProvider(_ -> { })) {
+            AuthenticationResponse response = authenticate(provider, token);
 
-        assertJwkSetUnavailable(response);
+            assertJwkSetUnavailable(response);
+            IllegalStateException failure = assertThrows(IllegalStateException.class, provider.tenantRuntimeRegistry()
+                    .tenantContext("default").orElseThrow().accessTokenJwkSetManager()::jwkKeys);
+            assertThat(failure.getCause().getMessage(),
+                       is("OpenID Provider JWK Set must not contain private or symmetric key values"));
+        }
         assertThat(remoteJwkSetRequests.get(), is(1));
     }
 
@@ -1250,6 +1296,7 @@ class OidcJwtAccessTokenValidationTest {
         assertInvalidToken(response, "Bearer Token is not a valid signed JWT");
     }
 
+    // RFC 9068, 4: "MUST exactly match the value of the" issuer claim.
     @Test
     void wrongIssuerIsRejected() {
         String token = signedToken(it -> it.issuer("https://other.example"));
@@ -1259,6 +1306,7 @@ class OidcJwtAccessTokenValidationTest {
         assertInvalidToken(response, "Bearer Token JWT claims are invalid");
     }
 
+    // RFC 9068, 4: "The JWT access token MUST be rejected if" the audience excludes this resource.
     @Test
     void wrongAudienceIsRejected() {
         String token = signedToken(it -> it.audience(List.of("api://other")));
@@ -1268,6 +1316,7 @@ class OidcJwtAccessTokenValidationTest {
         assertInvalidToken(response, "Bearer Token JWT claims are invalid");
     }
 
+    // Deliberate Helidon opt-out: this is NOT RFC 9068, 4 profile conformance (audience validation is a MUST).
     @Test
     void audienceValidationCanBeDisabled() {
         String token = signedToken(it -> it.audience(List.of("api://other")));
@@ -1277,6 +1326,7 @@ class OidcJwtAccessTokenValidationTest {
         assertThat(response.status(), is(SecurityResponse.SecurityStatus.SUCCESS));
     }
 
+    // Deliberate Helidon opt-out: this is NOT RFC 9068, 4 profile conformance (audience validation is a MUST).
     @Test
     void audienceValidationCanBeDisabledWithoutConfiguredAudience() {
         String token = signedToken(it -> it.audience(List.of("api://other")));
@@ -1286,6 +1336,7 @@ class OidcJwtAccessTokenValidationTest {
         assertThat(response.status(), is(SecurityResponse.SecurityStatus.SUCCESS));
     }
 
+    // RFC 9068, 4: "The current time MUST be before" the expiration time.
     @Test
     void expiredTokenIsRejected() {
         Instant now = Instant.now();
@@ -1297,6 +1348,7 @@ class OidcJwtAccessTokenValidationTest {
         assertInvalidToken(response, "Bearer Token JWT claims are invalid");
     }
 
+    // RFC 7519, 4.1.5: "the JWT MUST NOT be accepted for processing" before the `nbf` time.
     @Test
     void futureNotBeforeIsRejected() {
         String token = signedToken(it -> it.notBefore(Instant.now().plus(5, ChronoUnit.MINUTES)));
@@ -1306,6 +1358,7 @@ class OidcJwtAccessTokenValidationTest {
         assertInvalidToken(response, "Bearer Token JWT claims are invalid");
     }
 
+    // RFC 9068, 4: "Implementers MAY provide for some small leeway" to account for clock skew.
     @Test
     void expirationWithinClockSkewIsAccepted() {
         Instant now = Instant.now();
@@ -1331,6 +1384,7 @@ class OidcJwtAccessTokenValidationTest {
         assertInvalidToken(response, "Bearer Token JWT claims are invalid");
     }
 
+    // RFC 9068, 2.2: `exp` is "REQUIRED".
     @Test
     void missingExpirationIsRejected() {
         String token = signedToken(it -> it.expirationTime(null));
@@ -1340,6 +1394,7 @@ class OidcJwtAccessTokenValidationTest {
         assertInvalidToken(response, "Bearer Token JWT claims are invalid");
     }
 
+    // RFC 9068, 2.2: `iat` is "REQUIRED".
     @Test
     void missingIssueTimeIsRejected() {
         String token = signedToken(it -> it.issueTime(null));
@@ -1349,6 +1404,7 @@ class OidcJwtAccessTokenValidationTest {
         assertInvalidToken(response, "Bearer Token JWT claims are invalid");
     }
 
+    // RFC 9068, 2.2: `jti` is "REQUIRED".
     @Test
     void missingJwtIdIsRejected() {
         String token = signedToken(it -> it.jwtId(null));
@@ -1358,6 +1414,7 @@ class OidcJwtAccessTokenValidationTest {
         assertInvalidToken(response, "Bearer Token JWT claims are invalid");
     }
 
+    // RFC 9068, 2.2: `client_id` is "REQUIRED".
     @Test
     void missingClientIdIsRejected() {
         String token = signedToken(it -> it.removePayloadClaim("client_id"));
@@ -1367,6 +1424,7 @@ class OidcJwtAccessTokenValidationTest {
         assertInvalidToken(response, "Bearer Token JWT claims are invalid");
     }
 
+    // Helidon policy: a required RFC 9068 `client_id` must also be nonblank to identify a real client.
     @Test
     void blankClientIdIsRejected() {
         String token = signedToken(it -> it.addPayloadClaim("client_id", " "));
@@ -1376,6 +1434,8 @@ class OidcJwtAccessTokenValidationTest {
         assertInvalidToken(response, "Bearer Token JWT claims are invalid");
     }
 
+    // RFC 9068, 2.1: "use of asymmetric cryptography is RECOMMENDED"; it is not a MUST.
+    // Explicitly provisioned symmetric keys are allowed; discovery must not publish them.
     @Test
     void locallyProvisionedHmacAccessTokenIsAccepted() {
         String token = signedToken(JwkOctet.ALG_HS256, "verify-oct", "sign-oct", _ -> { });
@@ -1418,6 +1478,7 @@ class OidcJwtAccessTokenValidationTest {
         }
     }
 
+    // RFC 9068, 2.1: "JWT access tokens MUST NOT use" the none signing algorithm.
     @Test
     void noneAlgorithmIsRejectedBeforeSignatureVerification() {
         String token = unsignedToken(_ -> { });
@@ -1427,6 +1488,7 @@ class OidcJwtAccessTokenValidationTest {
         assertInvalidToken(response, "Bearer Token JWS header is invalid");
     }
 
+    // RFC 9068, 2.1: "JWT access tokens MUST include this media type" in the typ header.
     @Test
     void missingAccessTokenTypeIsRejected() {
         String token = signedToken(false, JwkRSA.ALG_RS256, "verify-rsa", "sign-rsa", _ -> { });
@@ -1436,6 +1498,7 @@ class OidcJwtAccessTokenValidationTest {
         assertInvalidToken(response, "Bearer Token JWS header is invalid");
     }
 
+    // RFC 9068, 4: "The resource server MUST verify that" the typ header uses an allowed AT type.
     @Test
     void wrongJwtTypeIsRejected() {
         String token = signedToken(it -> it.type("JWT"));
@@ -1445,6 +1508,7 @@ class OidcJwtAccessTokenValidationTest {
         assertInvalidToken(response, "Bearer Token JWS header is invalid");
     }
 
+    // Deliberate non-RFC-9068 CUSTOM profile: accepting this token does not imply RFC 9068 compliance.
     @Test
     void customProfileAcceptsProviderLayoutWithoutRfc9068Claims() {
         String token = signedToken(it -> it.type("JWT")
@@ -1499,6 +1563,8 @@ class OidcJwtAccessTokenValidationTest {
         }
     }
 
+    // RFC 9068, 2.1 warns about "preventing OpenID Connect ID Tokens" from being accepted as access tokens.
+    // CUSTOM uses a configured marker rather than RFC 9068's mandatory `typ` header to distinguish token kinds.
     @Test
     void customProfileRejectsIdTokenEvenWhenIssuerAudienceAndSignatureMatch() {
         String token = signedToken(it -> it.type("JWT").addPayloadClaim("typ", "ID"));
@@ -1564,6 +1630,7 @@ class OidcJwtAccessTokenValidationTest {
         }
     }
 
+    // Helidon CUSTOM opt-out, not RFC 9068 conformance: RFC 9068, 4 requires validating `aud`.
     @Test
     void customProfileAudienceOptOutStillChecksIssuerAndTokenType() {
         String otherAudience = signedToken(it -> it.type("JWT")
@@ -1602,6 +1669,7 @@ class OidcJwtAccessTokenValidationTest {
         }
     }
 
+    // RFC 9068, 4: "The resource server MUST validate the signature of all incoming JWT access tokens".
     @Test
     void customProfileStillRejectsTamperedSignatures() {
         String token = signedToken(it -> it.type("JWT").addPayloadClaim("typ", "Bearer"));
@@ -1626,6 +1694,7 @@ class OidcJwtAccessTokenValidationTest {
         }
     }
 
+    // RFC 9449, 7.2: "MUST reject a DPoP-bound access token received as a bearer token".
     @Test
     void customProfileStillRejectsSenderConstrainedTokensAsBearer() {
         String token = signedToken(it -> it.type("JWT")
@@ -1637,6 +1706,7 @@ class OidcJwtAccessTokenValidationTest {
         }
     }
 
+    // RFC 9068, 4: "The resource server MUST validate the signature of all incoming JWT access tokens".
     @Test
     void invalidSignatureIsRejected() {
         String token = signedToken(_ -> { });
@@ -1662,6 +1732,7 @@ class OidcJwtAccessTokenValidationTest {
         assertThat(remoteJwkSetRequests.get(), is(1));
     }
 
+    // RFC 9068, 2.2: `sub` is "REQUIRED - as defined in Section 4.1.2 of [RFC7519]."
     @Test
     void missingSubjectIsRejected() {
         String token = signedToken(it -> it.subject(null));
@@ -1671,6 +1742,7 @@ class OidcJwtAccessTokenValidationTest {
         assertInvalidToken(response, "Bearer Token JWT claims are invalid");
     }
 
+    // Helidon policy: an RFC 9068 required subject must also be nonblank to map a principal.
     @Test
     void blankSubjectIsRejected() {
         String token = signedToken(it -> it.subject(" "));

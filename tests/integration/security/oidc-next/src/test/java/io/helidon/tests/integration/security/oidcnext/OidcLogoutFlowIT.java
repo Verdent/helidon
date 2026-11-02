@@ -17,6 +17,7 @@
 package io.helidon.tests.integration.security.oidcnext;
 
 import java.net.URI;
+import java.util.List;
 
 import io.helidon.common.parameters.Parameters;
 import io.helidon.common.uri.UriQuery;
@@ -33,9 +34,15 @@ import org.junit.jupiter.api.Test;
 import static org.hamcrest.CoreMatchers.is;
 import static org.hamcrest.MatcherAssert.assertThat;
 
+/*
+ * OpenID Connect RP-Initiated Logout 1.0: https://openid.net/specs/openid-connect-rpinitiated-1_0.html
+ * Clearing local cookies is Helidon's application-session behavior, not an OP-side logout assertion.
+ */
 class OidcLogoutFlowIT {
     private static final URI POST_LOGOUT_REDIRECT_URI = URI.create("http://localhost/post-logout");
 
+    // RP-Initiated Logout 2: "An RP requests that the OP log out the End-User by redirecting
+    // the End-User's User Agent to the OP's Logout Endpoint."
     @Test
     void localLogoutClearsAuthenticationCookieAndRedirectsToEndSessionEndpoint() {
         try (TestOidcServer idp = TestOidcServer.builder()
@@ -85,6 +92,11 @@ class OidcLogoutFlowIT {
                     endSessionUri = URI.create(logout.headers().first(HeaderNames.LOCATION).orElseThrow());
                     assertThat(endSessionUri.getPath(), is("/logout"));
                 }
+                String localAuthenticationCookieName = providerConfig.tenants().get("default")
+                        .cookies().localAuthenticationCookieName();
+                assertThat(List.of(browser.cookieHeader().orElse("").split("; ")).stream().anyMatch(entry ->
+                        entry.startsWith(localAuthenticationCookieName + "=")
+                                || entry.startsWith(localAuthenticationCookieName + ".")), is(false));
 
                 UriQuery endSessionQuery = UriQuery.create(endSessionUri);
                 assertThat(endSessionQuery.contains("id_token_hint"), is(true));

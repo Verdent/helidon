@@ -196,6 +196,9 @@ class OidcAccessTokenValidationIT {
         }
     }
 
+    // RFC 9068 §4 (https://www.rfc-editor.org/rfc/rfc9068.html#section-4):
+    // "The resource server MUST validate the signature of all incoming JWT access tokens".
+    // The synthetic OP publishes a real public signing key for this protected-resource path.
     @Test
     void protectedResourceValidatesJwtAccessTokenThroughJwks() {
         try (TestOidcServer idp = TestOidcServer.builder()
@@ -294,6 +297,10 @@ class OidcAccessTokenValidationIT {
         }
     }
 
+    // RFC 7662 §§2.1-2.2 (https://www.rfc-editor.org/rfc/rfc7662.html#section-2.1):
+    // token is "REQUIRED. The string value of the token."; active is "REQUIRED. Boolean indicator
+    // of whether or not the presented token is currently active."
+    // The fixture issues a non-JWT token and the RP sends that value to the OP for introspection.
     @Test
     void protectedResourceValidatesOpaqueAccessTokenThroughIntrospection() {
         try (TestOidcServer idp = TestOidcServer.builder()
@@ -341,6 +348,9 @@ class OidcAccessTokenValidationIT {
         }
     }
 
+    // RFC 7662 §2.2 (https://www.rfc-editor.org/rfc/rfc7662.html#section-2.2):
+    // "Specific implementations MAY extend this structure with their own service-specific response names".
+    // Which optional claims the synthetic OP returns is fixture configuration, not an RP requirement.
     @Test
     void introspectionIncludesConfiguredAccessTokenClaims() {
         try (TestOidcServer idp = TestOidcServer.builder()
@@ -375,6 +385,9 @@ class OidcAccessTokenValidationIT {
         }
     }
 
+    // RFC 7662 §2.2 (https://www.rfc-editor.org/rfc/rfc7662.html#section-2.2):
+    // for a token that "does not exist on this server", the OP MUST return active=false.
+    // Helidon must not authorize the resulting inactive token.
     @Test
     void protectedResourceRejectsUnknownOpaqueAccessTokenThroughIntrospection() {
         try (TestOidcServer idp = TestOidcServer.builder()
@@ -413,6 +426,9 @@ class OidcAccessTokenValidationIT {
         }
     }
 
+    // RFC 7662 §4 (https://www.rfc-editor.org/rfc/rfc7662.html#section-4):
+    // "If the token can expire, the authorization server MUST determine whether or not the token has expired."
+    // This fixture reports an expired token as inactive; the RP denies it.
     @Test
     void protectedResourceRejectsExpiredOpaqueAccessTokenThroughIntrospection() {
         try (TestOidcServer idp = TestOidcServer.builder()
@@ -471,6 +487,9 @@ class OidcAccessTokenValidationIT {
         }
     }
 
+    // RFC 7662 §2.3 (https://www.rfc-editor.org/rfc/rfc7662.html#section-2.3):
+    // querying an inactive token "is not considered an error response by this specification".
+    // Helidon maps OP failures/unparseable success to 503, rather than treating them as inactive tokens.
     @Test
     void protectedResourceDistinguishesIntrospectionFailuresFromInactiveTokens() {
         AtomicInteger upstreamStatus = new AtomicInteger(200);

@@ -48,6 +48,12 @@ import org.junit.jupiter.api.Test;
 import static org.hamcrest.CoreMatchers.is;
 import static org.hamcrest.MatcherAssert.assertThat;
 
+/*
+ * Specification excerpts below use OpenID Connect Core 1.0 incorporating errata set 2:
+ * https://openid.net/specs/openid-connect-core-1_0.html
+ * RFC 7519 excerpts use https://www.rfc-editor.org/rfc/rfc7519.
+ * Configuration choices that go beyond a specification requirement are marked as Helidon policy.
+ */
 class OidcIdTokenValidatorTest {
     private static final URI ISSUER = URI.create("https://issuer.example");
     private static final URI AUTHORIZATION_ENDPOINT_URI = URI.create("https://issuer.example/authorize");
@@ -83,6 +89,7 @@ class OidcIdTokenValidatorTest {
                 .toURI();
     }
 
+    // Core 3.1.3.7: "Clients MUST validate the ID Token in the Token Response".
     @Test
     void validIdTokenIsAccepted() {
         String idToken = signedIdToken(it -> it.email("user1@example.org"));
@@ -95,6 +102,10 @@ class OidcIdTokenValidatorTest {
         assertThat(validated.jwt().subject().orElse(""), is(SUBJECT));
     }
 
+    // OIDC Core 1.0 §12.2 (https://openid.net/specs/openid-connect-core-1_0.html):
+    // refreshed `sub` "MUST be the same as in the ID Token issued when the original authentication occurred".
+    // Vendor hooks run only *after* ordinary signature and continuity checks; the hook and its
+    // vendor_status claim are Helidon extension policy, not a replacement for Core validation.
     @Test
     void tenantAdapterAddsIdTokenValidationAfterCoreAndRefreshContinuityChecks() {
         AtomicInteger checks = new AtomicInteger();
@@ -153,6 +164,7 @@ class OidcIdTokenValidatorTest {
         assertThat(refreshChecks.get(), is(1));
     }
 
+    // Core 3.1.2.1: the nonce request parameter is "OPTIONAL." No nonce was requested or returned here.
     @Test
     void omittedAuthenticationRequestNonceIsValidForCodeFlow() {
         OidcAuthenticationRequestState withNoNonce = new OidcAuthenticationRequestState(
@@ -165,6 +177,7 @@ class OidcIdTokenValidatorTest {
         assertThat(result.succeeded(), is(true));
     }
 
+    // Core 3.1.3.7(1): "If the ID Token is encrypted, decrypt it using the keys and algorithms".
     @Test
     void encryptedIdTokenIsDecryptedAndValidated() {
         String signedIdToken = signedIdToken(it -> it.email("user1@example.org"));
@@ -183,6 +196,8 @@ class OidcIdTokenValidatorTest {
         assertThat(validated.jwt().subject().orElse(""), is(SUBJECT));
     }
 
+    // Core 3.1.3.7(1): the RP "SHOULD reject" a signed-only token if encryption was negotiated.
+    // Supplying a decryption key alone does not negotiate or require encrypted ID Tokens.
     @Test
     void signedIdTokenIsAcceptedWhenDecryptionKeyIsConfigured() {
         String idToken = signedIdToken(it -> it.email("user1@example.org"));
@@ -198,6 +213,7 @@ class OidcIdTokenValidatorTest {
         assertThat(validated.encrypted(), is(false));
     }
 
+    // Core 3.1.3.7(1): "If the ID Token is encrypted, decrypt it"; no decryption key was configured.
     @Test
     void encryptedIdTokenWithoutDecryptionKeyIsRejected() {
         String encryptedIdToken = encryptedIdToken(signedIdToken(_ -> { }));
@@ -207,6 +223,7 @@ class OidcIdTokenValidatorTest {
         assertFailure(result, "ID Token decryption keys are not configured");
     }
 
+    // RFC 7519, 5.2: for a Nested JWT, "this Header Parameter MUST be present" and "the value MUST be \"JWT\"".
     @Test
     void encryptedIdTokenWithoutNestedJwtContentTypeIsRejected() {
         String encryptedIdToken = withoutJweHeaderClaim(encryptedIdToken(signedIdToken(_ -> { })), "cty", "JWT");
@@ -219,6 +236,7 @@ class OidcIdTokenValidatorTest {
         assertFailure(result, "Encrypted ID Token must be a Nested JWT with cty=JWT");
     }
 
+    // Core 3.1.3.7(1): decrypt using "the keys and algorithms that the Client specified during Registration".
     @Test
     void encryptedIdTokenWithDisallowedEncryptionAlgorithmIsRejected() {
         String encryptedIdToken = encryptedIdToken(signedIdToken(_ -> { }));
@@ -232,6 +250,7 @@ class OidcIdTokenValidatorTest {
         assertFailure(result, "Encrypted ID Token JWE alg header is not allowed: RSA-OAEP");
     }
 
+    // Core 3.1.3.7(1): decrypt using "the keys and algorithms that the Client specified during Registration".
     @Test
     void encryptedIdTokenWithDisallowedContentEncryptionAlgorithmIsRejected() {
         String encryptedIdToken = encryptedIdToken(signedIdToken(_ -> { }));
@@ -245,6 +264,7 @@ class OidcIdTokenValidatorTest {
         assertFailure(result, "Encrypted ID Token JWE enc header is not allowed: A256GCM");
     }
 
+    // Core 10.2: with multiple encryption keys, "a `kid` value MUST be provided in the JOSE Header."
     @Test
     void encryptedIdTokenRequiresKidWhenMultipleDecryptionKeysExist() {
         String encryptedIdToken = withoutJweHeaderClaim(encryptedIdToken(signedIdToken(_ -> { })),
@@ -259,6 +279,8 @@ class OidcIdTokenValidatorTest {
         assertFailure(result, "Encrypted ID Token JWE kid is required when multiple decryption keys exist");
     }
 
+    // Core 3.1.3.7(1): decrypt using "the keys and algorithms that the Client specified during Registration";
+    // an unknown kid cannot select one of the configured decryption keys.
     @Test
     void encryptedIdTokenRejectsUnknownDecryptionKid() {
         String encryptedIdToken = replaceJweHeaderClaim(encryptedIdToken(signedIdToken(_ -> { })),
@@ -274,6 +296,7 @@ class OidcIdTokenValidatorTest {
         assertFailure(result, "ID Token decryption key is not configured for kid: unknown-rsa");
     }
 
+    // Core 10.2: "The key usage of the respective keys MUST include encryption."
     @Test
     void encryptedIdTokenRejectsDecryptionKeyWithSigningUse() {
         String encryptedIdToken = replaceJweHeaderClaim(encryptedIdToken(signedIdToken(_ -> { })),
@@ -289,6 +312,8 @@ class OidcIdTokenValidatorTest {
         assertFailure(result, "ID Token decryption JWK use must be enc");
     }
 
+    // RFC 7517 section 4.3: key_ops identifies "the operation(s) for which the key is intended to be used";
+    // an explicitly sign-only key cannot be selected for unwrapKey/decrypt.
     @Test
     void encryptedIdTokenRejectsDecryptionKeyWithoutDecryptOperation() {
         String encryptedIdToken = replaceJweHeaderClaim(encryptedIdToken(signedIdToken(_ -> { })),
@@ -304,6 +329,8 @@ class OidcIdTokenValidatorTest {
         assertFailure(result, "ID Token decryption JWK key_ops must allow unwrapKey or decrypt");
     }
 
+    // Core 3.1.3.7(1): an unencrypted token after negotiating encryption is a SHOULD-reject;
+    // requiring encryption explicitly here makes rejection Helidon policy, not an unconditional Core MUST.
     @Test
     void signedIdTokenIsRejectedWhenEncryptionIsRequired() {
         String idToken = signedIdToken(it -> it.email("user1@example.org"));
@@ -316,6 +343,7 @@ class OidcIdTokenValidatorTest {
         assertFailure(result, "ID Token encryption is required");
     }
 
+    // Core 3.1.3.7(2): the Issuer Identifier "MUST exactly match the value of the `iss` (issuer) Claim."
     @Test
     void wrongIssuerIsRejected() {
         String idToken = signedIdToken(it -> it.issuer("https://other.example"));
@@ -325,6 +353,8 @@ class OidcIdTokenValidatorTest {
         assertFailure(result, "ID Token claims are invalid");
     }
 
+    // Core 3.1.3.7(2): the OP issuer "MUST exactly match the value of the `iss` (issuer) Claim";
+    // configuring a different issuer for an API's access tokens must not change ID Token trust.
     @Test
     void separateApiIssuerNeverChangesIdTokenIssuerTrust() {
         String apiIssuer = "https://api-issuer.example";
@@ -338,6 +368,7 @@ class OidcIdTokenValidatorTest {
         assertFailure(validate(signedIdToken(jwt -> jwt.issuer(apiIssuer)), tenant), "ID Token claims are invalid");
     }
 
+    // Core 3.1.3.7(3): the ID Token "MUST be rejected if the ID Token does not list the Client as a valid audience".
     @Test
     void wrongAudienceIsRejected() {
         String idToken = signedIdToken(it -> it.audience(List.of("other-client")));
@@ -347,6 +378,7 @@ class OidcIdTokenValidatorTest {
         assertFailure(result, "ID Token claims are invalid");
     }
 
+    // Core 2: the `aud` claim is "REQUIRED. Audience(s) that this ID Token is intended for."
     @Test
     void missingAudienceIsRejected() {
         String idToken = signedIdToken(false, _ -> { });
@@ -356,6 +388,7 @@ class OidcIdTokenValidatorTest {
         assertFailure(result, "ID Token claims are invalid");
     }
 
+    // Core 3.1.3.7(11): a requested nonce's "value checked to verify that it is the same value".
     @Test
     void wrongNonceIsRejected() {
         String idToken = signedIdToken(it -> it.nonce("other-nonce"));
@@ -365,6 +398,7 @@ class OidcIdTokenValidatorTest {
         assertFailure(result, "ID Token claims are invalid");
     }
 
+    // Core 3.1.3.7(11): "a `nonce` Claim MUST be present" if sent in the Authentication Request.
     @Test
     void missingNonceIsRejected() {
         String idToken = signedIdToken(it -> it.nonce(null));
@@ -374,15 +408,24 @@ class OidcIdTokenValidatorTest {
         assertFailure(result, "ID Token claims are invalid");
     }
 
+    // Core section 2 (`azp`): "OPTIONAL. Authorized party - the party to which the ID Token was issued."
+    // Requiring it for multiple trusted audiences is stricter Helidon policy, not an unconditional OIDC requirement.
     @Test
     void multipleAudiencesRequireAuthorizedParty() {
         String idToken = signedIdToken(it -> it.addAudience("other-audience"));
+        OidcTenantConfig tenant = tenantConfig(it -> it.idToken(idTokenConfig -> idTokenConfig
+                .addTrustedAdditionalAudience("other-audience")));
 
-        var result = validate(idToken);
+        var result = validate(idToken, tenant);
 
         assertFailure(result, "ID Token claims are invalid");
     }
 
+    /*
+     * Spec: OpenID Connect Core 1.0, 3.1.3.7(3), ID Token Validation.
+     * https://openid.net/specs/openid-connect-core-1_0.html#IDTokenValidation
+     * Quote: "or if it contains additional audiences not trusted by the Client."
+     */
     @Test
     void multipleAudiencesWithClientAuthorizedPartyAndUntrustedAudienceAreRejected() {
         String idToken = signedIdToken(it -> it.addAudience("other-audience")
@@ -393,6 +436,8 @@ class OidcIdTokenValidatorTest {
         assertFailure(result, "ID Token claims are invalid");
     }
 
+    // Core 3.1.3.7(3): "The `aud` (audience) Claim MAY contain an array with more than one element."
+    // Each additional audience here is trusted explicitly; an untrusted third audience must still fail.
     @Test
     void multipleAudiencesWithClientAuthorizedPartyAndTrustedAudienceAreAccepted() {
         String idToken = signedIdToken(it -> it.addAudience("other-audience")
@@ -410,6 +455,26 @@ class OidcIdTokenValidatorTest {
         assertFailure(validate(untrusted, tenant), "ID Token claims are invalid");
     }
 
+    /*
+     * Spec: OpenID Connect Core 1.0, 12.2, Successful Refresh Response.
+     * https://openid.net/specs/openid-connect-core-1_0.html#RefreshTokenResponse
+     * Quote: "its `aud` Claim Value MUST be the same as in the ID Token issued when the original authentication occurred,"
+     */
+    @Test
+    void refreshedAudienceMustMatchEvenWhenAdditionalAudienceIsTrusted() {
+        OidcTenantConfig tenant = tenantConfig(it -> it.idToken(idTokenConfig -> idTokenConfig
+                .addTrustedAdditionalAudience("other-audience")));
+        OidcValidatedIdToken current = validate(signedIdToken(_ -> { }), tenant).validatedToken().orElseThrow();
+        String refreshed = signedIdToken(it -> it.nonce(null)
+                .addAudience("other-audience")
+                .addPayloadClaim("azp", CLIENT_ID));
+
+        assertFailure(validator.validateRefresh(refreshed,
+                                               OidcTenantContext.ready("default", tenant), current, VALIDATION_TIME),
+                      "Refreshed ID Token audience does not match the existing local authentication result");
+    }
+
+    // Core 3.1.3.7(5): for a present `azp`, "the Client SHOULD verify that its `client_id` is the Claim Value."
     @Test
     void wrongAuthorizedPartyIsRejected() {
         String idToken = signedIdToken(it -> it.addPayloadClaim("azp", "other-client"));
@@ -419,6 +484,8 @@ class OidcIdTokenValidatorTest {
         assertFailure(result, "ID Token claims are invalid");
     }
 
+    // Core 2: "The `azp` value is a case-sensitive string containing a StringOrURI value."
+    // Requiring the present value to be nonblank and identify this client is Helidon's stricter policy.
     @Test
     void presentAuthorizedPartyMustBeANonblankString() {
         for (Object value : List.of(42, true, List.of(CLIENT_ID), Map.of("client_id", CLIENT_ID), "", " \t")) {
@@ -436,6 +503,7 @@ class OidcIdTokenValidatorTest {
         assertFailure(validate(multiAudience, multiAudienceTenant), "ID Token claims are invalid");
     }
 
+    // Core 3.1.3.7(10): for `iat`, "The acceptable range is Client specific." Here it is the configured skew.
     @Test
     void issueTimeRespectsConfiguredClockSkew() {
         OidcTenantConfig tenant = tenantConfig(it -> it.idToken(idToken -> idToken.clockSkew(Duration.ofSeconds(30))));
@@ -446,6 +514,7 @@ class OidcIdTokenValidatorTest {
                       "ID Token claims are invalid");
     }
 
+    // RFC 7519, 4.1.5: for `nbf`, "Implementers MAY provide for some small leeway" for clock skew.
     @Test
     void notBeforeRespectsConfiguredClockSkew() {
         OidcTenantConfig tenant = tenantConfig(it -> it.idToken(idToken -> idToken.clockSkew(Duration.ofSeconds(30))));
@@ -456,6 +525,7 @@ class OidcIdTokenValidatorTest {
                       "ID Token claims are invalid");
     }
 
+    // Core 2: for `exp`, "Implementers MAY provide for some small leeway" to account for clock skew.
     @Test
     void expirationRespectsConfiguredClockSkew() {
         OidcTenantConfig tenant = tenantConfig(it -> it.idToken(idToken -> idToken.clockSkew(Duration.ofSeconds(30))));
@@ -471,6 +541,7 @@ class OidcIdTokenValidatorTest {
                       "ID Token claims are invalid");
     }
 
+    // Core 3.1.3.7(9): "The current time MUST be before the time represented by the `exp` Claim."
     @Test
     void expirationAtValidationTimeIsRejectedWithZeroClockSkew() {
         OidcTenantConfig tenant = tenantConfig(it -> it.idToken(idToken -> idToken.clockSkew(Duration.ZERO)));
@@ -480,6 +551,7 @@ class OidcIdTokenValidatorTest {
         assertFailure(validate(idToken, tenant), "ID Token claims are invalid");
     }
 
+    // RFC 7519, 2 and 4.1.5: "non-integer values can be represented" and `nbf` is a not-before boundary.
     @Test
     void fractionalNotBeforeDoesNotAllowEarlyIdTokenAuthentication() {
         OidcTenantContext context = OidcTenantContext.ready("default", tenantConfig(
@@ -495,6 +567,7 @@ class OidcIdTokenValidatorTest {
         assertThat(accepted.validatedToken().orElseThrow().jwt().notBefore().orElseThrow(), is(boundary));
     }
 
+    // RFC 7519, 2: NumericDate permits that "non-integer values can be represented"; `iat` range is RP policy.
     @Test
     void fractionalIssueTimeDoesNotAllowEarlyIdTokenAuthentication() {
         OidcTenantContext context = OidcTenantContext.ready("default", tenantConfig(
@@ -510,6 +583,7 @@ class OidcIdTokenValidatorTest {
         assertThat(accepted.validatedToken().orElseThrow().jwt().issueTime().orElseThrow(), is(boundary));
     }
 
+    // RFC 7519, 2: "non-integer values can be represented"; Core 3.1.3.7(9) requires time before `exp`.
     @Test
     void fractionalExpirationAllowsAuthenticationUntilTheExactTime() {
         OidcTenantContext context = OidcTenantContext.ready("default", tenantConfig(
@@ -525,6 +599,7 @@ class OidcIdTokenValidatorTest {
                       "ID Token claims are invalid");
     }
 
+    // Core 2: an expired ID Token "MUST NOT be accepted by the RP when performing authentication".
     @Test
     void expiredIdTokenIsRejected() {
         String idToken = signedIdToken(it -> it.issueTime(VALIDATION_TIME.minus(2, ChronoUnit.HOURS))
@@ -535,6 +610,7 @@ class OidcIdTokenValidatorTest {
         assertFailure(result, "ID Token claims are invalid");
     }
 
+    // Core 3.1.3.7(9): "The current time MUST be before the time represented by the `exp` Claim."
     @Test
     void suppliedValidationTimeDeterminesTokenExpiration() {
         String idToken = signedIdToken(_ -> { });
@@ -547,6 +623,7 @@ class OidcIdTokenValidatorTest {
         assertFailure(result, "ID Token claims are invalid");
     }
 
+    // Core 2: the `exp` Claim is "REQUIRED. Expiration time".
     @Test
     void missingExpirationIsRejected() {
         String idToken = signedIdToken(it -> it.expirationTime(null));
@@ -556,6 +633,7 @@ class OidcIdTokenValidatorTest {
         assertFailure(result, "ID Token claims are invalid");
     }
 
+    // Core 2: the `iat` Claim is "REQUIRED. Time at which the JWT was issued."
     @Test
     void missingIssueTimeIsRejected() {
         String idToken = signedIdToken(it -> it.issueTime(null));
@@ -565,6 +643,8 @@ class OidcIdTokenValidatorTest {
         assertFailure(result, "ID Token claims are invalid");
     }
 
+    // Helidon policy: use only registered/allowed ID Token algorithms (Core 3.1.3.7(7): "SHOULD" use RS256
+    // or the algorithm selected during registration), before trying keys or verifying a signature.
     @Test
     void unsupportedAlgorithmIsRejectedBeforeSignatureVerification() {
         String idToken = signedIdToken(JwkOctet.ALG_HS256, "verify-oct", "sign-oct", _ -> { });
@@ -574,6 +654,8 @@ class OidcIdTokenValidatorTest {
         assertFailure(result, "ID Token JWS header is invalid");
     }
 
+    // RFC 7517, 4.4 (https://www.rfc-editor.org/rfc/rfc7517#section-4.4), JWK `alg`:
+    // "Use of this member is OPTIONAL."
     @Test
     void rsaJwkWithoutDeclaredAlgorithmUsesRegisteredIdTokenAlgorithm() {
         for (String algorithm : List.of("RS384", "RS512")) {
@@ -594,6 +676,8 @@ class OidcIdTokenValidatorTest {
         }
     }
 
+    // Helidon policy: reject unsigned ID Tokens by default. Core 3.1.3.7(6) allows TLS server validation
+    // in lieu of an ID Token signature for direct code-flow token responses; this is not a general Core MUST-reject.
     @Test
     void noneAlgorithmIsRejectedBeforeSignatureVerification() {
         String idToken = unsignedIdToken(_ -> { });
@@ -603,6 +687,7 @@ class OidcIdTokenValidatorTest {
         assertFailure(result, "ID Token JWS header is invalid");
     }
 
+    // Helidon policy: also verify code-flow ID Token signatures when Core 3.1.3.7(6) permits TLS validation instead.
     @Test
     void invalidSignatureIsRejected() {
         String idToken = signedIdToken(_ -> { });
@@ -617,6 +702,7 @@ class OidcIdTokenValidatorTest {
         assertFailure(result, "ID Token signature is invalid");
     }
 
+    // Core 2: `sub` is a "REQUIRED. Subject Identifier."
     @Test
     void missingSubjectIsRejected() {
         String idToken = signedIdToken(it -> it.subject(null));
@@ -626,6 +712,7 @@ class OidcIdTokenValidatorTest {
         assertFailure(result, "ID Token claims are invalid");
     }
 
+    // Core 2: `sub` is a "REQUIRED. Subject Identifier." A blank identifier cannot identify this end-user.
     @Test
     void blankSubjectIsRejected() {
         String idToken = signedIdToken(it -> it.subject(" "));
@@ -635,6 +722,7 @@ class OidcIdTokenValidatorTest {
         assertFailure(result, "ID Token claims are invalid");
     }
 
+    // Core 2: `sub` "MUST NOT exceed 255 ASCII characters in length."
     @Test
     void subjectWithMaximumAsciiLengthIsAccepted() {
         String idToken = signedIdToken(it -> it.subject("a".repeat(255)));
@@ -644,6 +732,7 @@ class OidcIdTokenValidatorTest {
         assertThat(result.succeeded(), is(true));
     }
 
+    // Core 2: `sub` "MUST NOT exceed 255 ASCII characters in length."
     @Test
     void tooLongSubjectIsRejected() {
         String idToken = signedIdToken(it -> it.subject("a".repeat(256)));
@@ -653,6 +742,7 @@ class OidcIdTokenValidatorTest {
         assertFailure(result, "ID Token claims are invalid");
     }
 
+    // Core 2: `sub` is bounded by "255 ASCII characters in length"; Helidon applies an ASCII-only policy.
     @Test
     void nonAsciiSubjectIsRejected() {
         String idToken = signedIdToken(it -> it.subject("uzivatel-\u011b"));
@@ -662,6 +752,7 @@ class OidcIdTokenValidatorTest {
         assertFailure(result, "ID Token claims are invalid");
     }
 
+    // Core 2: "The ID Token is represented as a JSON Web Token (JWT)".
     @Test
     void malformedIdTokenIsRejected() {
         var result = validate("not-a-jwt");

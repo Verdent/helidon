@@ -110,6 +110,14 @@ import static org.hamcrest.Matchers.not;
 import static org.hamcrest.Matchers.hasItem;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
+/*
+ * OAuth 2.0 token grants and responses: https://www.rfc-editor.org/rfc/rfc6749
+ * PKCE: https://www.rfc-editor.org/rfc/rfc7636
+ * PAR: https://www.rfc-editor.org/rfc/rfc9126
+ * JAR: https://www.rfc-editor.org/rfc/rfc9101
+ * OIDC code-flow token response: https://openid.net/specs/openid-connect-core-1_0.html#TokenResponse
+ * OP cache-header obligations must not be mistaken for a universal RP MUST-reject rule.
+ */
 @ServerTest
 class OidcAuthorizationCodeTokenExchangeTest {
     private static final URI ISSUER = URI.create("https://issuer.example");
@@ -236,7 +244,8 @@ class OidcAuthorizationCodeTokenExchangeTest {
     void setUp(URI serverUri) {
         tokenEndpointUri = serverUri.resolve("token");
         mutualTlsTokenEndpointUri = mutualTlsServerUri.resolve("token");
-        // RFC 9126 requires HTTPS for PAR even when the other test endpoints and RP callback use HTTP.
+        // RFC 9126, 2 (https://www.rfc-editor.org/rfc/rfc9126#section-2):
+        // "The PAR endpoint URL MUST use the \"https\" scheme." Other test endpoints may use HTTP.
         pushedAuthorizationRequestEndpointUri = conventionalTlsServerUri.resolve("par");
         mutualTlsPushedAuthorizationRequestEndpointUri = mutualTlsServerUri.resolve("par");
         responseStatus = 200;
@@ -258,6 +267,9 @@ class OidcAuthorizationCodeTokenExchangeTest {
         TYPED_JWK_REQUESTS.set(0);
     }
 
+    // RFC 6749 §4.1.1 (https://www.rfc-editor.org/rfc/rfc6749.html#section-4.1.1):
+    // "The client constructs the request URI by adding the following parameters" to its query;
+    // §3.1 says an existing endpoint query "MUST be retained when adding additional query parameters."
     @Test
     void authorizationRedirectFormEncodesParametersAndRetainsEndpointQuery(URI serverUri) {
         String clientId = "client/id?mode=a&client_injected=true+literal%£";
@@ -301,6 +313,8 @@ class OidcAuthorizationCodeTokenExchangeTest {
         assertThat(query.contains("literal"), is(false));
     }
 
+    // RFC 9126 §2 (https://www.rfc-editor.org/rfc/rfc9126.html#section-2): the PAR response's
+    // `request_uri` is a "single-use reference to the respective request data".
     @Test
     void pushedAuthorizationRedirectFormEncodesRequestUri(URI serverUri) {
         String requestUri = "urn:ietf:params:oauth:request_uri:test?part=a&par_injected=b+plus&pct=%25";
@@ -339,6 +353,9 @@ class OidcAuthorizationCodeTokenExchangeTest {
         assertThat(query.contains("pct"), is(false));
     }
 
+    // RFC 9126 §2: "The pushed authorization request endpoint is an HTTP API at the authorization
+    // server that accepts HTTP `POST` requests" with form-encoded parameters; client authentication
+    // is performed using the registered method, here client_secret_basic.
     @Test
     void pushedAuthorizationRequestPostsAuthorizationRequestParametersAndUsesClientSecretBasic() {
         responseStatus = 201;
@@ -557,6 +574,7 @@ class OidcAuthorizationCodeTokenExchangeTest {
         assertThat(RECORDED_REQUEST.get().formParameters().get("code"), is(List.of("new-code")));
     }
 
+    // RFC 9126, 2: "The PAR endpoint URL MUST use the" HTTPS scheme.
     @Test
     void pushedAuthorizationRequestRejectsHttpSelectedFromProgrammaticMetadata(URI serverUri) {
         OidcTenantConfig tenant = OidcTenantConfig.builder()
@@ -580,16 +598,20 @@ class OidcAuthorizationCodeTokenExchangeTest {
         assertThat(RECORDED_REQUEST.get(), is(nullValue()));
     }
 
+    // RFC 9126, 2.2: "provide it in the response with a `201` HTTP status code".
     @Test
     void pushedAuthorizationRequestAccepts201WithCustomReasonPhrase() throws Exception {
         assertPushedAuthorizationRequestWithReasonPhrase("Request Stored");
     }
 
+    // RFC 9126, 2.2: "provide it in the response with a `201` HTTP status code".
     @Test
     void pushedAuthorizationRequestAccepts201WithoutReasonPhrase() throws Exception {
         assertPushedAuthorizationRequestWithReasonPhrase("");
     }
 
+    // RFC 6749 §2.3.1: the server "MAY support including the client credentials in the request-body".
+    // This tests exactly one client_id/body secret and no Basic header on the PAR request.
     @Test
     void pushedAuthorizationRequestWithClientSecretPostDoesNotDuplicateClientId() {
         responseStatus = 201;
@@ -606,6 +628,8 @@ class OidcAuthorizationCodeTokenExchangeTest {
         assertThat(request.formParameters().get("client_secret"), is(List.of(CLIENT_SECRET)));
     }
 
+    // RFC 9126 §2: the PAR endpoint "MUST accept its issuer identifier" as the JWT
+    // Request Object's intended audience; RFC 7523 §3 requires a client-assertion `aud` identifying the AS.
     @Test
     void pushedAuthorizationRequestWithPrivateKeyJwtUsesIssuerAsClientAssertionAudience() {
         responseStatus = 201;
@@ -627,6 +651,8 @@ class OidcAuthorizationCodeTokenExchangeTest {
         assertThat(signedJwt.getJwt().audience().orElseThrow(), is(List.of(ISSUER.toString())));
     }
 
+    // RFC 8705 §5 (https://www.rfc-editor.org/rfc/rfc8705.html#section-5): mTLS clients
+    // "MUST use the alias URL of the endpoint within the `mtls_endpoint_aliases`, when present".
     @Test
     void staticPushedAuthorizationRequestEndpointDoesNotOverrideWellKnownMutualTlsAlias() {
         responseStatus = 201;
@@ -674,6 +700,8 @@ class OidcAuthorizationCodeTokenExchangeTest {
         assertThat(request.formParameters().get("client_id"), is(List.of(CLIENT_ID)));
     }
 
+    // RFC 8705 §5: for an mTLS client, a present alias URL takes precedence over the
+    // conventional endpoint even when mTLS is used for token binding instead of client authentication.
     @Test
     void bindingOnlyClientAuthenticationMethodsPreferRealMutualTlsTokenAlias() {
         for (OidcClientAuthenticationMethod method : List.of(OidcClientAuthenticationMethod.CLIENT_SECRET_BASIC,
@@ -713,6 +741,8 @@ class OidcAuthorizationCodeTokenExchangeTest {
         }
     }
 
+    // RFC 8705 §5: mTLS clients "MUST use the alias URL of the endpoint" if present.
+    // This applies to subsequent refresh and outbound token requests, not just the code grant.
     @Test
     void refreshedAndOutboundTokensUseTheSameMutualTlsAlias() {
         OidcTenantConfig tenant = outboundMutualTlsTenant(OidcClientAuthenticationMethod.CLIENT_SECRET_BASIC, true);
@@ -752,6 +782,8 @@ class OidcAuthorizationCodeTokenExchangeTest {
                    is(List.of("urn:ietf:params:oauth:grant-type:token-exchange")));
     }
 
+    // RFC 8705 §5: a PAR endpoint alias, when advertised, is used "in preference to the
+    // endpoint URL of the same name at the top level of metadata".
     @Test
     void bindingOnlyPrefersMutualTlsParAliasEvenWithStaticConventionalEndpoint() {
         responseStatus = 201;
@@ -771,6 +803,8 @@ class OidcAuthorizationCodeTokenExchangeTest {
                    is(OidcClientAuthenticationSupport.basicAuthorization(CLIENT_ID, CLIENT_SECRET)));
     }
 
+    // RFC 8705 §5: the mTLS alias object can contain an `introspection_endpoint` or
+    // other directly contacted endpoints; the same preference applies to UserInfo when advertised.
     @Test
     void advertisedOpUserInfoAliasUsesTheClientCertificateAndBearerToken() {
         for (OidcClientAuthenticationMethod method : List.of(OidcClientAuthenticationMethod.CLIENT_SECRET_BASIC,
@@ -795,6 +829,8 @@ class OidcAuthorizationCodeTokenExchangeTest {
         }
     }
 
+    // RFC 8705 §5: aliases apply to a client "intending to do mutual TLS";
+    // configured TLS credentials alone do not express that outbound intention.
     @Test
     void configuredTlsCredentialsWithoutOutboundIntentDoNotSelectAliases() {
         OidcTenantConfig tenant = outboundMutualTlsTenant(OidcClientAuthenticationMethod.CLIENT_SECRET_BASIC, false);
@@ -813,6 +849,8 @@ class OidcAuthorizationCodeTokenExchangeTest {
         assertThat(USER_INFO_AUTHORIZATION.get(), is("Bearer ordinary-access-token"));
     }
 
+    // RFC 8705 §5: "When an endpoint is not present in `mtls_endpoint_aliases`, then the client
+    // uses the conventional endpoint URL" from the top-level metadata.
     @Test
     void absentMutualTlsAliasUsesTheConventionalHttpsEndpoint() {
         OidcTenantConfig tenant = outboundMutualTlsTenant(OidcClientAuthenticationMethod.CLIENT_SECRET_BASIC, true);
@@ -826,6 +864,8 @@ class OidcAuthorizationCodeTokenExchangeTest {
         assertThat(MUTUAL_TLS_REQUESTS.get(), is(0));
     }
 
+    // RFC 8705 §5: when an endpoint is absent from the alias object, "the client uses the
+    // conventional endpoint URL"; UserInfo is no exception to the fallback rule.
     @Test
     void absentOpUserInfoAliasUsesTheConventionalHttpsEndpoint() {
         OidcTenantConfig tenant = outboundMutualTlsTenant(OidcClientAuthenticationMethod.CLIENT_SECRET_BASIC, true);
@@ -839,6 +879,8 @@ class OidcAuthorizationCodeTokenExchangeTest {
         assertThat(MUTUAL_TLS_REQUESTS.get(), is(0));
     }
 
+    // RFC 8705 §5 requires use of a present alias. Never retry a failed authenticated
+    // request against another endpoint with the same client credentials; that is local fail-closed policy.
     @Test
     void failedMutualTlsTokenAliasIsNotRetriedAtTheConventionalEndpoint() {
         responseStatus = 503;
@@ -854,6 +896,8 @@ class OidcAuthorizationCodeTokenExchangeTest {
         assertThat(CONVENTIONAL_REQUESTS.get(), is(0));
     }
 
+    // RFC 8705 §5: a present alias "MUST" be preferred; silently downgrading
+    // a failed PAR exchange to a conventional endpoint is Helidon's fail-closed policy.
     @Test
     void failedMutualTlsParAliasIsNotRetriedAtTheConventionalEndpoint() {
         responseStatus = 503;
@@ -870,6 +914,8 @@ class OidcAuthorizationCodeTokenExchangeTest {
         assertThat(CONVENTIONAL_REQUESTS.get(), is(0));
     }
 
+    // RFC 8705 §5: mTLS clients "MUST use the alias URL" when present;
+    // not leaking a bearer token to a second URL after a failure is Helidon's policy.
     @Test
     void failedOpUserInfoAliasIsNotRetriedAtTheConventionalEndpoint() {
         userInfoStatus = 503;
@@ -886,6 +932,8 @@ class OidcAuthorizationCodeTokenExchangeTest {
         assertThat(USER_INFO_AUTHORIZATION.get(), is("Bearer opaque-access-token"));
     }
 
+    // RFC 9126 §5: "The presence of `pushed_authorization_request_endpoint` is sufficient"
+    // for the client to know PAR is available; RFC 8705 §5 selects its mTLS alias here.
     @Test
     void discoveredAliasOnlyParEndpointIsUsedByAutoAuthorizationRequests() {
         responseStatus = 201;
@@ -914,6 +962,8 @@ class OidcAuthorizationCodeTokenExchangeTest {
         assertThat(MUTUAL_TLS_CERTIFICATE_PRESENT.get(), is(true));
     }
 
+    // OIDC Discovery §3 calls the UserInfo endpoint "RECOMMENDED" rather than universally
+    // required; a configured mTLS alias may be the only usable UserInfo URL for this tenant.
     @Test
     void discoveredUserInfoAliasWithoutTopLevelEndpointIsUsable() {
         HTTPS_METADATA_RESPONSE.set(localWellKnownMetadata()
@@ -940,6 +990,8 @@ class OidcAuthorizationCodeTokenExchangeTest {
         assertThat(MUTUAL_TLS_CERTIFICATE_PRESENT.get(), is(true));
     }
 
+    // OIDC Discovery §3: UserInfo URLs "MUST use the `https` scheme";
+    // fail an invalid alias before sending the sensitive Bearer token.
     @Test
     void insecureOrFragmentedDiscoveredUserInfoAliasFailsBeforeBearerUse() {
         for (String alias : List.of("http://issuer.example/userinfo",
@@ -965,6 +1017,8 @@ class OidcAuthorizationCodeTokenExchangeTest {
         }
     }
 
+    // OIDC Discovery §3 (https://openid.net/specs/openid-connect-discovery-1_0.html#ProviderMetadata):
+    // the issuer is a "URL using the `https` scheme". This tenant has no HTTP discovery opt-out.
     @Test
     void outboundMutualTlsRejectsHttpDiscoveryBeforeTheInitialRequest(URI serverUri) {
         URI httpWellKnown = serverUri.resolve(".well-known/openid-configuration");
@@ -978,6 +1032,8 @@ class OidcAuthorizationCodeTokenExchangeTest {
         assertThat(HTTPS_METADATA_REQUESTS.get(), is(0));
     }
 
+    // OIDC Discovery §7.2: "TLS certificate checking MUST be performed by the RP" when
+    // retrieving OP configuration; deferred outbound discovery is not a weaker trust path.
     @Test
     void outboundMutualTlsRejectsHttpDeferredDiscoveryBeforeTheRequest(URI serverUri) {
         OidcTenantConfig tenant = OidcTenantConfig.builder()
@@ -998,6 +1054,9 @@ class OidcAuthorizationCodeTokenExchangeTest {
         assertThat(HTTP_METADATA_REQUESTS.get(), is(0));
     }
 
+    // RFC 9126 §2.2 (https://www.rfc-editor.org/rfc/rfc9126.html#section-2.2):
+    // the successful PAR response includes `expires_in`, "a JSON number that represents the
+    // lifetime of the request URI in seconds as a positive integer"; this fixture omits it.
     @Test
     void pushedAuthorizationRequestRejectsInvalidSuccessfulResponse() {
         responseStatus = 201;
@@ -1013,6 +1072,7 @@ class OidcAuthorizationCodeTokenExchangeTest {
         assertThat(result.description(), is("Pushed Authorization Request Endpoint response is invalid"));
     }
 
+    // RFC 9126, 2.2 requires "a `201` HTTP status code" for a successful PAR response.
     @Test
     void pushedAuthorizationRequestDoesNotAccept202AsSuccess() {
         responseStatus = 202;
@@ -1025,6 +1085,8 @@ class OidcAuthorizationCodeTokenExchangeTest {
         assertThat(result.response(), is(Optional.empty()));
     }
 
+    // RFC 9126 §2.3: the AS "returns an error response with the same format as is specified
+    // for error responses from the token endpoint". The RP retains the received error details.
     @Test
     void pushedAuthorizationRequestErrorResponseIsParsed() {
         responseStatus = 400;
@@ -1071,6 +1133,8 @@ class OidcAuthorizationCodeTokenExchangeTest {
         assertThat(thrown.getMessage(), containsString("authorization-code.request-object.signing-jwk"));
     }
 
+    // RFC 9126, 2.1: "The `request_uri` authorization request parameter is one exception,
+    // and it MUST NOT be provided" when pushing the original parameters.
     @Test
     void authorizationCodeFlowInitiationUsesPushedAuthorizationRequest(URI serverUri) {
         responseStatus = 201;
@@ -1124,6 +1188,8 @@ class OidcAuthorizationCodeTokenExchangeTest {
         assertThat(request.formParameters().containsKey("request_uri"), is(false));
     }
 
+    // RFC 9101, 10.1: "it MUST be either signed using" JWS when sent by value in `request`;
+    // this test checks the RP-created JWS signature; the synthetic OP is not a signature verifier.
     @Test
     void authorizationCodeFlowInitiationCanUseSignedRequestObjectWithPushedAuthorizationRequest(URI serverUri) {
         responseStatus = 201;
@@ -1472,6 +1538,9 @@ class OidcAuthorizationCodeTokenExchangeTest {
         }
     }
 
+    // RFC 9101 §4 (https://www.rfc-editor.org/rfc/rfc9101.html#section-4):
+    // "The algorithms chosen need to be supported by both the client and the authorization server."
+    // A Request Object is signed before being encrypted for the OP's public key.
     @Test
     void authorizationCodeFlowInitiationCanUseEncryptedRequestObject(URI serverUri) throws Exception {
         OidcTenantConfig tenant = encryptedRequestObjectTenant(serverUri, false, false, null);
@@ -1497,6 +1566,8 @@ class OidcAuthorizationCodeTokenExchangeTest {
         assertEncryptedRequestObject(query.get("request"), "A128CBC-HS256");
     }
 
+    // RFC 9126 §3: "Clients MAY use the `request` parameter as defined in JAR" to push a
+    // Request Object; JAR's signing/encryption rules apply before the returned request_uri redirect.
     @Test
     void authorizationCodeFlowInitiationCanUseEncryptedRequestObjectWithPar(URI serverUri) throws Exception {
         responseStatus = 201;
@@ -1545,6 +1616,7 @@ class OidcAuthorizationCodeTokenExchangeTest {
         assertThat(response.throwable().isEmpty(), is(true));
     }
 
+    // RFC 7636, 4.5: `code_verifier` is "REQUIRED.  Code verifier" in the token request after PKCE.
     @Test
     void authorizationCodeExchangePostsCodeVerifierAndUsesClientSecretBasic() {
         OidcTokenEndpointResult result = exchange(confidentialTenant(), PKCE_VERIFIER);
@@ -1571,6 +1643,8 @@ class OidcAuthorizationCodeTokenExchangeTest {
                                                        "code_verifier", List.of(PKCE_VERIFIER))));
     }
 
+    // RFC 8707 §2 (https://www.rfc-editor.org/rfc/rfc8707.html#section-2):
+    // "Multiple `resource` parameters MAY be used" for more than one target resource.
     @Test
     void authorizationCodeExchangeSendsConfiguredResources() {
         OidcTokenEndpointResult result = exchange(confidentialTenantWithAuthorizationCodeResources(), PKCE_VERIFIER);
@@ -1581,6 +1655,8 @@ class OidcAuthorizationCodeTokenExchangeTest {
                    is(List.of("https://api.example.com", "urn:example:contacts")));
     }
 
+    // RFC 6749, 6: refresh_token is "REQUIRED.  The refresh token issued to the client.";
+    // 3.2: "The client MUST use the HTTP" POST method for access-token requests.
     @Test
     void refreshTokenGrantPostsRefreshTokenAndUsesClientAuthentication() {
         responseBody = JsonObject.builder()
@@ -1609,6 +1685,8 @@ class OidcAuthorizationCodeTokenExchangeTest {
                                                        "refresh_token", List.of(REFRESH_TOKEN))));
     }
 
+    // RFC 8707 §2: "Multiple `resource` parameters MAY be used" in the token request;
+    // this tenant requests the configured resource when refreshing an access token.
     @Test
     void refreshTokenGrantSendsConfiguredResources() {
         responseBody = validRefreshResponse().toString();
@@ -1621,6 +1699,9 @@ class OidcAuthorizationCodeTokenExchangeTest {
                    is(List.of("https://api.example.com", "urn:example:contacts")));
     }
 
+    // RFC 6749 §6 (https://www.rfc-editor.org/rfc/rfc6749.html#section-6) requires a refresh_token
+    // in the form; sending client_id for this unauthenticated public-client registration is local
+    // interoperability behavior, not a blanket OAuth MUST for public refresh requests.
     @Test
     void refreshTokenGrantForPublicClientSendsClientIdInForm() {
         responseBody = validRefreshResponse().toString();
@@ -1635,6 +1716,8 @@ class OidcAuthorizationCodeTokenExchangeTest {
                                                        "client_id", List.of(CLIENT_ID))));
     }
 
+    // RFC 6749 §2.3.1: "the authorization server MAY support including the client credentials
+    // in the request-body"; Helidon must not also send Basic for this configured method.
     @Test
     void refreshTokenGrantWithClientSecretPostSendsCredentialsInForm() {
         responseBody = validRefreshResponse().toString();
@@ -1651,6 +1734,8 @@ class OidcAuthorizationCodeTokenExchangeTest {
                                                        "client_secret", List.of(CLIENT_SECRET))));
     }
 
+    // RFC 8705 §2 (https://www.rfc-editor.org/rfc/rfc8705.html#section-2): for mTLS client
+    // authentication, "the client MUST include the `client_id` parameter" on AS requests.
     @Test
     void refreshTokenGrantWithMutualTlsSendsClientIdInForm() {
         responseBody = validRefreshResponse().toString();
@@ -1666,6 +1751,8 @@ class OidcAuthorizationCodeTokenExchangeTest {
                                                        "client_id", List.of(CLIENT_ID))));
     }
 
+    // RFC 6749 §4.1.3: client_id is "REQUIRED, if the client is not authenticating with the
+    // authorization server" on an authorization-code exchange.
     @Test
     void publicClientSendsClientIdInForm() {
         OidcTokenEndpointResult result = exchange(publicTenant(), null);
@@ -1679,6 +1766,8 @@ class OidcAuthorizationCodeTokenExchangeTest {
                                                        "client_id", List.of(CLIENT_ID))));
     }
 
+    // RFC 6749, 2.3.1: "Alternatively, the authorization server MAY support including the client credentials"
+    // in the request body. Explicit POST configuration selects this optional interoperable method.
     @Test
     void clientSecretPostSendsCredentialsInForm() {
         OidcTokenEndpointResult result = exchange(confidentialTenant(OidcClientAuthenticationMethod.CLIENT_SECRET_POST),
@@ -1695,6 +1784,8 @@ class OidcAuthorizationCodeTokenExchangeTest {
                                                        "client_secret", List.of(CLIENT_SECRET))));
     }
 
+    // RFC 8705 §2: for mTLS client authentication, "the client MUST include the `client_id`
+    // parameter" even though its X.509 certificate also identifies the client.
     @Test
     void tlsClientAuthSendsClientIdInForm() {
         OidcTokenEndpointResult result = exchange(mutualTlsTenant(OidcClientAuthenticationMethod.TLS_CLIENT_AUTH),
@@ -1710,6 +1801,8 @@ class OidcAuthorizationCodeTokenExchangeTest {
                                                        "client_id", List.of(CLIENT_ID))));
     }
 
+    // RFC 8705 §2: "the client MUST include the `client_id` parameter" on mTLS AS requests;
+    // the self-signed-certificate variant is not exempt from this requirement.
     @Test
     void selfSignedTlsClientAuthSendsClientIdInForm() {
         OidcTokenEndpointResult result = exchange(
@@ -1726,6 +1819,8 @@ class OidcAuthorizationCodeTokenExchangeTest {
                                                        "client_id", List.of(CLIENT_ID))));
     }
 
+    // RFC 7523 §2.2 (https://www.rfc-editor.org/rfc/rfc7523.html#section-2.2):
+    // client_assertion contains one JWT: "It MUST NOT contain more than one JWT."
     @Test
     void clientSecretJwtSendsClientAssertion() {
         OidcTokenEndpointResult result = exchange(confidentialTenant(OidcClientAuthenticationMethod.CLIENT_SECRET_JWT),
@@ -1745,6 +1840,8 @@ class OidcAuthorizationCodeTokenExchangeTest {
         assertThat(signedJwt.getJwt().algorithm().orElse(""), is("HS256"));
     }
 
+    // RFC 7523 §2.2: client_assertion contains one JWT: "It MUST NOT contain more than one JWT."
+    // Private-key signing replaces the client-secret MAC in this variant.
     @Test
     void privateKeyJwtSendsClientAssertion() {
         OidcTokenEndpointResult result = exchange(privateKeyJwtTenant(), PKCE_VERIFIER);
@@ -1795,6 +1892,9 @@ class OidcAuthorizationCodeTokenExchangeTest {
                    is(true));
     }
 
+    // JWK `kid` identifies a key, but requiring an explicit key ID when the *local client signing
+    // source* contains multiple keys is Helidon's unambiguous-selection policy. The OIDC Core
+    // multi-key `kid` MUST for OP-signed ID Tokens is a different requirement.
     @Test
     void privateKeyJwtRequiresKeyIdForMultiKeyJwk() {
         IllegalArgumentException thrown = assertThrows(IllegalArgumentException.class,
@@ -1840,6 +1940,8 @@ class OidcAuthorizationCodeTokenExchangeTest {
         assertThat(thrown.getMessage(), containsString("client-assertion.jwk"));
     }
 
+    // RFC 6749, 5.2: "The authorization server responds with an HTTP 400 (Bad Request) status code"
+    // and an error object; error_description and error_uri are optional.
     @Test
     void tokenEndpointErrorResponseIsParsed() {
         responseStatus = 400;
@@ -1859,6 +1961,7 @@ class OidcAuthorizationCodeTokenExchangeTest {
         assertThat(error.errorUri().orElse(""), is("https://issuer.example/errors/invalid-grant"));
     }
 
+    // OIDC Core 3.1.3.3: "the following parameters MUST be included in the response" including id_token.
     @Test
     void invalidSuccessfulTokenResponseFails() {
         responseBody = JsonObject.builder()
@@ -1874,6 +1977,7 @@ class OidcAuthorizationCodeTokenExchangeTest {
         assertThat(result.description(), is("Token Endpoint response is invalid"));
     }
 
+    // RFC 6749, 3.3: "scope-token = 1*( %x21 / %x23-5B / %x5D-7E )"; tab is invalid.
     @Test
     void malformedScopeInSuccessfulTokenResponseFails() {
         responseBody = validTokenResponse(it -> it.set("scope", "openid\tprofile")).toString();
@@ -1885,6 +1989,7 @@ class OidcAuthorizationCodeTokenExchangeTest {
         assertThat(result.description(), is("Token Endpoint response is invalid"));
     }
 
+    // OIDC Core 3.1.3.3: "The response uses the `application/json` media type."
     @Test
     void successfulTokenResponseRequiresJsonContentType() {
         responseContentType = "text/plain";
@@ -1896,6 +2001,8 @@ class OidcAuthorizationCodeTokenExchangeTest {
         assertThat(result.description(), is("Token Endpoint response is invalid"));
     }
 
+    // RFC 6749, 5.1: the OP "MUST include the HTTP `Cache-Control` response header field"
+    // with no-store. Helidon elects to reject a nonconforming OP response; that rejection is local policy.
     @Test
     void successfulTokenResponseRequiresNoStoreCacheControl() {
         responseCacheControl = "private";
@@ -1907,6 +2014,8 @@ class OidcAuthorizationCodeTokenExchangeTest {
         assertThat(result.description(), is("Token Endpoint response is invalid"));
     }
 
+    // RFC 6749, 5.1: the OP must include "the `Pragma` response header field" with no-cache.
+    // Helidon's MUST-reject behavior is local policy, not an unconditional RP requirement.
     @Test
     void successfulTokenResponseRequiresNoCachePragma() {
         responsePragma = "cache";
@@ -1930,6 +2039,8 @@ class OidcAuthorizationCodeTokenExchangeTest {
         assertThat(result.description(), is("Token Endpoint Error Response is invalid"));
     }
 
+    // RFC 6749, 5.2: "The parameters are included in the entity-body of the HTTP response using
+    // the `application/json` media type"; a text/plain error response is malformed.
     @Test
     void tokenEndpointErrorResponseRequiresJsonContentType() {
         responseStatus = 400;

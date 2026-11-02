@@ -69,6 +69,9 @@ import static org.hamcrest.MatcherAssert.assertThat;
 import static org.junit.jupiter.api.Assertions.assertAll;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
+/* RFC 8693, OAuth 2.0 Token Exchange: https://www.rfc-editor.org/rfc/rfc8693.html
+ * Cache/admission decisions and requiring an explicit target are Helidon policy, not RFC requirements.
+ */
 @ServerTest
 @Execution(ExecutionMode.SAME_THREAD)
 class OidcTokenExchangeGrantTest {
@@ -240,6 +243,8 @@ class OidcTokenExchangeGrantTest {
         }
     }
 
+    // RFC 8693, 2.1: subject_token and subject_token_type are "REQUIRED"; requested_token_type,
+    // resource, audience and scope are "OPTIONAL". RFC 6749, 3.2: token requests use HTTP POST.
     @Test
     void tokenExchangeObtainsTokenAndUsesClientSecretBasic() {
         OidcProvider provider = provider(confidentialTenant(), tokenExchangeTarget());
@@ -307,6 +312,7 @@ class OidcTokenExchangeGrantTest {
         assertThat(REQUEST_COUNT.get(), is(1));
     }
 
+    // RFC 8693, 2.1: "subject_token" is "REQUIRED"; abstaining when none exists is Helidon behavior.
     @Test
     void tokenExchangeAbstainsWhenCurrentSubjectTokenIsMissing() {
         OidcProvider provider = provider(confidentialTenant(), tokenExchangeTarget());
@@ -541,6 +547,8 @@ class OidcTokenExchangeGrantTest {
         }
     }
 
+    // RFC 8693, 2.2.2: the AS can return the "invalid_target" error code;
+    // how Helidon represents that failure in outbound security is its own policy.
     @Test
     void tokenEndpointErrorMapsToTokenExchangeOutboundFailure() {
         responseStatus = 400;
@@ -560,6 +568,8 @@ class OidcTokenExchangeGrantTest {
         assertThat(REQUEST_COUNT.get(), is(1));
     }
 
+    // RFC 8693, 2.2.1: "access_token", "issued_token_type", and "token_type" are REQUIRED;
+    // scope grammar comes from RFC 6749, 3.3. Invalid responses must not reach the downstream API.
     @Test
     void invalidTokenExchangeResponsesCannotBeForwardedOrCached() {
         JsonObject valid = tokenExchangeResponse("not-forwarded", 600);
@@ -630,6 +640,7 @@ class OidcTokenExchangeGrantTest {
         assertThat(RECORDED_REQUEST.get().formParameters().get("audience"), is(List.of("api://orders")));
     }
 
+    // RFC 8693, 2.1: resource and audience are both "OPTIONAL"; this requirement is Helidon policy.
     @Test
     void tokenExchangeRequiresResourceOrAudience() {
         IllegalArgumentException thrown = assertThrows(IllegalArgumentException.class,
@@ -650,6 +661,7 @@ class OidcTokenExchangeGrantTest {
         assertThat(thrown.getMessage(), containsString("strategy must be TOKEN_EXCHANGE"));
     }
 
+    // RFC 8693, 2.1: a resource URI "MUST NOT include a fragment component".
     @Test
     void invalidTokenExchangeResourceIsRejected() {
         IllegalArgumentException thrown = assertThrows(IllegalArgumentException.class,
@@ -683,6 +695,8 @@ class OidcTokenExchangeGrantTest {
         assertThat(thrown.getMessage(), containsString("strategy must be TOKEN_EXCHANGE"));
     }
 
+    // RFC 8693, 2.1: "whether or not to allow unauthenticated or unidentified clients are deployment decisions";
+    // requiring a confidential client for Helidon's outbound strategy is a local policy.
     @Test
     void tokenExchangeRequiresConfidentialClient() {
         try (OidcProvider provider = provider(publicClientTenant(), tokenExchangeTarget())) {
@@ -770,6 +784,7 @@ class OidcTokenExchangeGrantTest {
         }
     }
 
+    // RFC 8693, 2.2.1: "Parameter names and string values are included as JSON strings."
     @Test
     void tokenExchangeResponseRequiresStringParameters() {
         JsonObject valid = tokenExchangeResponse("issued-token", 600);
@@ -790,6 +805,7 @@ class OidcTokenExchangeGrantTest {
         }
     }
 
+    // RFC 8693, 2.2.1: token_type is "a case-insensitive value specifying the method of using the access token".
     @Test
     void tokenExchangeResponseAcceptsCaseInsensitiveBearerAndOptionalScope() {
         JsonObject base = tokenExchangeResponse("issued-token", 600);
@@ -809,6 +825,7 @@ class OidcTokenExchangeGrantTest {
         assertThat(OidcTokenExchangeResponse.fromJson(base).scope(), is(Optional.empty()));
     }
 
+    // RFC 8693, 2.2.1: scope is "OPTIONAL" and uses RFC 6749, 3.3 (space-delimited scope tokens).
     @Test
     void tokenExchangeResponseRejectsInvalidScopeGrammarAndTypes() {
         JsonObject base = tokenExchangeResponse("issued-token", 600);
@@ -833,6 +850,8 @@ class OidcTokenExchangeGrantTest {
         }
     }
 
+    // RFC 8693, 2.2.1: "issued_token_type" identifies the issued token's representation;
+    // Helidon's outbound Bearer strategy intentionally accepts only access tokens.
     @Test
     void tokenExchangeResponseRejectsUnsupportedIssuedTokenType() {
         IllegalArgumentException thrown = assertThrows(IllegalArgumentException.class,
@@ -846,6 +865,8 @@ class OidcTokenExchangeGrantTest {
         assertThat(thrown.getMessage(), containsString("issued_token_type"));
     }
 
+    // RFC 8693, 2.2.1 permits token_type "N_A" for tokens not usable as access tokens;
+    // Helidon's outbound Bearer strategy requires a usable access token instead.
     @Test
     void tokenExchangeResponseRejectsNaTokenType() {
         IllegalArgumentException thrown = assertThrows(IllegalArgumentException.class,

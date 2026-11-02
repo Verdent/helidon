@@ -44,6 +44,11 @@ class KeycloakPushedAuthorizationRequestIT {
     static final GenericContainer<?> CONTAINER = KeycloakOidcContainer.httpsContainer(
             "keycloak/tls/dns-san.crt", "keycloak/tls/dns-san.key");
 
+    // RFC 9126 §2.2 (https://www.rfc-editor.org/rfc/rfc9126.html#section-2.2):
+    // "If the verification is successful, the server MUST generate a request URI".
+    // This test checks the RP uses Keycloak's discovered PAR endpoint and places the returned
+    // request_uri, rather than the raw scope/state, on the browser-facing authorization URL.
+    // Reaching the OP login page does not by itself prove a completed authorization-code exchange.
     @Test
     void authorizationCodeFlowUsesKeycloakPushedAuthorizationRequestEndpointFromDiscovery() throws Exception {
         URI issuer = URI.create("https://localhost:" + CONTAINER.getMappedPort(KeycloakOidcContainer.HTTPS_PORT)

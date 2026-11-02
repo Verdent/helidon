@@ -26,6 +26,9 @@ import static org.hamcrest.MatcherAssert.assertThat;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 class OidcOutboundPolicyConfigTest {
+    // RFC 8707 §2 (https://www.rfc-editor.org/rfc/rfc8707.html#section-2):
+    // the resource "value MUST be an absolute URI" and "MUST NOT include a fragment component."
+    // An application's scope names and configured resource identifiers are not prescribed by the RFC.
     @Test
     void clientCredentialsGrantValidatesResources() {
         OidcOutboundPolicyConfig policy = OidcOutboundPolicyConfig.builder()
@@ -46,6 +49,8 @@ class OidcOutboundPolicyConfigTest {
         assertThat(exception.getMessage(), containsString("client-credentials-resources"));
     }
 
+    // RFC 8707 §2 requires an absolute RFC 3986 URI; these inputs are not RFC 3986 URI syntax.
+    // Unicode, when desired, has to be percent-encoded in the URI rather than inserted verbatim.
     @Test
     void resourceIndicatorsRejectNonRfc3986Uris() {
         for (String resource : List.of("https://api.example/items?currency=£",
@@ -68,6 +73,9 @@ class OidcOutboundPolicyConfigTest {
         }
     }
 
+    // RFC 8707 §2: the resource "SHOULD NOT include a query component" but explicitly
+    // allows one when necessary. These examples test URI syntax, not OP acceptance
+    // (nor a promise that an OP will recognize a `file` resource identifier).
     @Test
     void resourceIndicatorsPreserveValidRfc3986Uris() {
         for (String resource : List.of("https://api.example/items?currency=%C2%A3",
@@ -86,6 +94,8 @@ class OidcOutboundPolicyConfigTest {
         }
     }
 
+    // RFC 8693 §2.1 (https://www.rfc-editor.org/rfc/rfc8693.html#section-2.1):
+    // resource "MUST be an absolute URI" and "MUST NOT include a fragment component."
     @Test
     void tokenExchangeForResourceValidatesResource() {
         OidcOutboundPolicyConfig policy = OidcOutboundPolicyConfig.builder()
@@ -106,6 +116,8 @@ class OidcOutboundPolicyConfigTest {
         assertThat(exception.getMessage(), containsString("token-exchange-resource"));
     }
 
+    // RFC 8693 §2.1: audience is "OPTIONAL. The logical name of the target service";
+    // specifying it without the optional resource is a valid token-exchange request.
     @Test
     void tokenExchangeForAudienceUsesAudienceOnly() {
         OidcOutboundPolicyConfig policy = OidcOutboundPolicyConfig.builder()
@@ -119,6 +131,8 @@ class OidcOutboundPolicyConfigTest {
         assertThat(policy.tokenExchangeAudience().orElseThrow(), is("api://orders"));
     }
 
+    // RFC 8693 §2.1: "The `audience` and `resource` parameters may be used together".
+    // This validates the configuration's retention of both, not an AS token exchange.
     @Test
     void tokenExchangeUsesResourceAndAudience() {
         OidcOutboundPolicyConfig policy = OidcOutboundPolicyConfig.builder()
@@ -133,6 +147,8 @@ class OidcOutboundPolicyConfigTest {
         assertThat(policy.tokenExchangeAudience().orElseThrow(), is("api://orders"));
     }
 
+    // Choosing exactly one outbound strategy per target is Helidon configuration,
+    // not an OAuth restriction on the number of grant types a client can support.
     @Test
     void oneStrategyIsSelectedPerPolicy() {
         OidcOutboundPolicyConfig none = OidcOutboundPolicyConfig.create();

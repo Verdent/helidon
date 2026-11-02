@@ -42,6 +42,10 @@ class KeycloakTokenPropagationIT {
     @Container
     static final GenericContainer<?> CONTAINER = KeycloakOidcContainer.CONTAINER;
 
+    // RFC 6750 §2.1 (https://www.rfc-editor.org/rfc/rfc6750.html#section-2.1):
+    // "the client uses the \"Bearer\" authentication scheme to transmit the access token."
+    // Forwarding an already authenticated token is a configured Helidon outbound strategy.
+    // This fake downstream checks only the header; it does not validate the token independently.
     @Test
     void outboundTargetPropagatesValidatedKeycloakBearerToken() {
         AtomicReference<String> downstreamAuthorization = new AtomicReference<>();

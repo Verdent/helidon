@@ -30,6 +30,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -269,6 +270,21 @@ final class KeycloakOidcIntegrationSupport {
                 .buildPrototype();
     }
 
+    static WebServer introspectingDownstream(AtomicReference<String> authorization, boolean validateAudience) {
+        // A downstream route that accepts any Bearer string would not prove Keycloak issued a usable token.
+        // Authenticate the forwarded token independently through the real OP before returning success.
+        OidcProviderConfig config = protectedResourceProviderConfig(OidcTokenValidationMethod.INTROSPECTION,
+                                                                    API_AUDIENCE, validateAudience);
+        return rpServer(config, routing -> routing.get("/downstream", SecurityFeature.authenticate(),
+                                                       (request, response) -> {
+                                                           authorization.set(request.headers()
+                                                                                     .first(HeaderNames.AUTHORIZATION)
+                                                                                     .orElse(""));
+                                                           response.headers().contentType(HttpMediaTypes.PLAINTEXT_UTF_8);
+                                                           response.send("downstream");
+                                                       }));
+    }
+
     static WebServer rpServer(OidcProviderConfig providerConfig, Consumer<HttpRouting.Builder> routes) {
         return rpServer(0, providerConfig, routes);
     }
@@ -352,6 +368,10 @@ final class KeycloakOidcIntegrationSupport {
     }
 
     static JsonObject passwordTokenResponse() {
+        // RFC 9700 §2.4 (https://www.rfc-editor.org/rfc/rfc9700.html#section-2.4):
+        // "The resource owner password credentials grant MUST NOT be used."
+        // This legacy grant is ONLY a Keycloak test-fixture shortcut for issuing input tokens;
+        // it is never called by the Helidon OIDC client/provider under test.
         return tokenResponse(Parameters.builder("token")
                                      .add("grant_type", "password")
                                      .add("username", USERNAME)
@@ -499,7 +519,7 @@ final class KeycloakOidcIntegrationSupport {
                     authorizationCode.scopes(List.of("openid", "profile", "email"));
                     authorizationCodeCustomizer.accept(authorizationCode);
                 })
-                .userInfo(userInfo -> userInfo.attributeClaimPaths(List.of("email")))
+                .userInfo(userInfo -> userInfo.attributeClaimPaths(List.of("email", "userinfo_source")))
                 .logout(logout -> logout.endSession(_ -> {
                 }))
                 .cookies(cookies -> cookies.password(COOKIE_PASSWORD));

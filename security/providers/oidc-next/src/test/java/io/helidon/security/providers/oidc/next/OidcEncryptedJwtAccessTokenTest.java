@@ -61,6 +61,10 @@ import static org.hamcrest.CoreMatchers.containsString;
 import static org.hamcrest.CoreMatchers.is;
 import static org.hamcrest.MatcherAssert.assertThat;
 
+/* RFC 9068, JWT Access Token Profile: https://www.rfc-editor.org/rfc/rfc9068.html#section-4
+ * RFC 7519, Nested JWT and replicated claims: https://www.rfc-editor.org/rfc/rfc7519.html#section-5
+ * Per-tenant key selection and fail-closed algorithm restrictions are Helidon security policy.
+ */
 class OidcEncryptedJwtAccessTokenTest {
     private static final String ISSUER = "https://issuer.example";
     private static final String AUDIENCE = "api://default";
@@ -78,6 +82,7 @@ class OidcEncryptedJwtAccessTokenTest {
                 .getResource("oidc-next-verify-public-jwk.json").toURI();
     }
 
+    // RFC 9068, 4: "If the JWT access token is encrypted, decrypt it using the keys and algorithms" negotiated.
     @Test
     void encryptedJwtAccessTokenAuthenticatesAndRetainsItsPresentedValue() throws JOSEException {
         String signed = signedToken(jwt -> jwt.addScope("resource.read"));
@@ -95,6 +100,7 @@ class OidcEncryptedJwtAccessTokenTest {
         }
     }
 
+    // RFC 7519, 5.3: the recipient "SHOULD verify that their values are identical" for replicated claims.
     @Test
     void encryptedJwtAccessTokenAcceptsMatchingReplicatedClaims() throws JOSEException {
         String signed = signedToken(_ -> { });
@@ -108,6 +114,7 @@ class OidcEncryptedJwtAccessTokenTest {
         }
     }
 
+    // RFC 9068, 4: decrypt with "the keys and algorithms that the resource server specified during registration".
     @Test
     void encryptedJwtAccessTokenUsesOnlyNegotiatedJweAlgorithms() throws JOSEException {
         String signed = signedToken(_ -> { });
@@ -120,6 +127,7 @@ class OidcEncryptedJwtAccessTokenTest {
         }
     }
 
+    // Requiring a per-key JWK algorithm when multiple key-management algorithms are enabled is Helidon policy.
     @Test
     void multipleKeyManagementAlgorithmsNeedPerKeyAlgorithmBinding() throws JOSEException {
         OidcTenantConfig ambiguous = tenant(validation -> validation
@@ -150,6 +158,8 @@ class OidcEncryptedJwtAccessTokenTest {
         }
     }
 
+    // RFC 9068, 4: when encryption was negotiated, the resource server "SHOULD reject" a plain token;
+    // Helidon makes this strict by default, but permits an explicit compatibility opt-out.
     @Test
     void accessTokenEncryptionIsRequiredByDefaultWhenKeysAreConfigured() throws JOSEException {
         String signed = signedToken(_ -> { });
@@ -164,6 +174,7 @@ class OidcEncryptedJwtAccessTokenTest {
         }
     }
 
+    // RFC 9068, 4: encrypted access tokens require the registered decryption keys and algorithms.
     @Test
     void encryptedJwtAccessTokenWithoutPrivateKeysIsRejectedWithoutAffectingSignedTokens() throws JOSEException {
         try (OidcProvider provider = provider(_ -> { })) {
@@ -172,6 +183,7 @@ class OidcEncryptedJwtAccessTokenTest {
         }
     }
 
+    // RFC 9068, 4: "The resource server MUST validate the signature of all incoming JWT access tokens".
     @Test
     void encryptedJwtAccessTokenStillRequiresValidInnerSignatureTypeAndClaims() throws JOSEException {
         String signed = signedToken(_ -> { });
@@ -193,6 +205,8 @@ class OidcEncryptedJwtAccessTokenTest {
         }
     }
 
+    // RFC 7519, 5.2 requires cty="JWT" for nested tokens; RFC 7519, 5.3 recommends replicated-claim equality.
+    // Refusing `zip`, ambiguous keys, and disabled algorithms is deliberate Helidon policy, not a universal JWE prohibition.
     @Test
     void malformedEncryptedAccessTokensAreRejected() throws JOSEException {
         String signed = signedToken(_ -> { });
@@ -240,6 +254,8 @@ class OidcEncryptedJwtAccessTokenTest {
         }
     }
 
+    // RFC 7516, 4.1.6 treats kid as a key-selection hint, not a universal requirement;
+    // requiring it when several local private keys exist is Helidon fail-closed policy.
     @Test
     void encryptedAccessTokenWithoutKidNeedsExactlyOnePrivateKey() throws JOSEException {
         String signed = signedToken(_ -> { });

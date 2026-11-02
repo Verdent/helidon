@@ -54,6 +54,8 @@ final class OidcWebClientFactory {
                 .from(configured)
                 .putProperty(OutboundConfig.PROPERTY_DISABLE_OUTBOUND, Boolean.TRUE.toString());
         if (signedRequestObjectWithParPossible(tenantConfig)) {
+            // RFC 9101 §8 specifies DNS-ID verification for the Request Object URI method.
+            // Applying it to signed Request Objects sent by value through PAR is Helidon's additional policy.
             // Discovery may select the PAR endpoint; it must use the same identity policy from the outset.
             // A connection opened by a non-strict WebClient must not be reused by this tenant.
             builder.shareConnectionCache(false)
@@ -99,32 +101,32 @@ final class OidcWebClientFactory {
     private static void verifyDnsId(SSLSession session) {
         String peerHost = session.getPeerHost();
         if (peerHost == null) {
-            throw new IllegalStateException("TLS peer has no DNS host for Request Object URI verification");
+            throw new IllegalStateException("Signed-PAR TLS peer has no DNS host for identity verification");
         }
         UriHost expectedHost;
         try {
             expectedHost = UriHost.create(peerHost);
         } catch (IllegalArgumentException e) {
-            throw new IllegalStateException("TLS peer has an invalid DNS host for Request Object URI verification", e);
+            throw new IllegalStateException("Signed-PAR TLS peer has an invalid DNS host for identity verification", e);
         }
         if (expectedHost.kind() != UriHost.Kind.DNS) {
-            throw new IllegalStateException("Request Object URI TLS peer must be identified by a DNS name");
+            throw new IllegalStateException("Signed-PAR TLS peer must be identified by a DNS name");
         }
 
         Certificate[] certificates;
         try {
             certificates = session.getPeerCertificates();
         } catch (SSLPeerUnverifiedException e) {
-            throw new IllegalStateException("Request Object URI TLS peer has no verified certificate", e);
+            throw new IllegalStateException("Signed-PAR TLS peer has no verified certificate", e);
         }
         if (certificates.length == 0 || !(certificates[0] instanceof X509Certificate leaf)) {
-            throw new IllegalStateException("Request Object URI TLS peer has no X.509 server certificate");
+            throw new IllegalStateException("Signed-PAR TLS peer has no X.509 server certificate");
         }
         Collection<List<?>> subjectAlternativeNames;
         try {
             subjectAlternativeNames = leaf.getSubjectAlternativeNames();
         } catch (CertificateParsingException e) {
-            throw new IllegalStateException("Request Object URI TLS peer has invalid certificate identities", e);
+            throw new IllegalStateException("Signed-PAR TLS peer has invalid certificate identities", e);
         }
         if (subjectAlternativeNames != null) {
             for (List<?> name : subjectAlternativeNames) {
@@ -137,7 +139,7 @@ final class OidcWebClientFactory {
                 }
             }
         }
-        throw new IllegalStateException("Request Object URI TLS peer certificate has no matching DNS subject alternative name");
+        throw new IllegalStateException("Signed-PAR TLS peer certificate has no matching DNS subject alternative name");
     }
 
     private static boolean matchesDnsId(UriHost expectedHost, String dnsId) {

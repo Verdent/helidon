@@ -199,6 +199,10 @@ class IdcsProtectedJwkAuthenticationTest {
         }
     }
 
+    // RFC 9068 §4 (https://www.rfc-editor.org/rfc/rfc9068.html#section-4):
+    // "The resource server MUST verify that the \"typ\" header value is \"at+jwt\" or \"application/at+jwt\""
+    // when using the RFC 9068 profile. This fixture models IDCS tokens without that typ
+    // (or with typ=JWT); the adapter instead selects a constrained CUSTOM profile.
     @Test
     void defaultIdcsJwtLayoutVerifiesDocumentedUntypedAccessTokensWithProtectedSigningKeys() {
         try (OidcProvider provider = providerWithIdcsJwtDefaults()) {
@@ -212,6 +216,9 @@ class IdcsProtectedJwkAuthenticationTest {
         }
     }
 
+    // RFC 9700 §2.3 (https://www.rfc-editor.org/rfc/rfc9700.html#section-2.3):
+    // if a token was not intended for this resource, "the resource server MUST refuse to serve the respective request."
+    // The `tok_type=AT` and protected-signature checks are IDCS adapter-specific safeguards.
     @Test
     void defaultIdcsJwtLayoutRejectsIdTokensAndTokensOutsideTheConfiguredResource() {
         try (OidcProvider provider = providerWithIdcsJwtDefaults()) {

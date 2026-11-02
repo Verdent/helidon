@@ -26,6 +26,11 @@ import static org.hamcrest.MatcherAssert.assertThat;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
+/*
+ * RFC 9110 §§4.2.1-4.2.2, https://www.rfc-editor.org/rfc/rfc9110.html#section-4.2.1:
+ * "A recipient that processes such a URI reference MUST reject it as invalid" when the
+ * http or https host is empty. Disabling Helidon's TLS requirement does not change URI validity.
+ */
 class OidcEndpointUrisTest {
     @Test
     void httpEndpointsRejectMissingOrInvalidAuthority() {

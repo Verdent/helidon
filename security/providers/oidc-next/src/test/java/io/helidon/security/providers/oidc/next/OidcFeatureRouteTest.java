@@ -2723,6 +2723,43 @@ class OidcFeatureRouteTest {
     }
 
     @Test
+    void logoutEndpointClearsLocalSessionWhenOnlyEndSessionIsDisabled() {
+        OidcTenantConfig tenant = tenantConfigWithEndSessionLogout(endSession -> endSession.enabled(false));
+        WebServer rpServer = oidcFeatureServer(providerConfig(tenant));
+        try {
+            SetCookie session = localAuthenticationCookie(tenant, "default");
+            SetCookie authenticationRequest = authenticationRequestCookie(CONFIGURED_REDIRECTION_ENDPOINT_URI, tenant);
+            OidcCookieStateHandler cookieHandler = OidcCookieStateHandler.create("default", tenant);
+            assertThat(cookieHandler.readLocalAuthenticationResult(session.value(), Instant.now(),
+                                                                   OidcIdTokenDecryptor.create(tenant)).isPresent(),
+                       is(true));
+            OidcCookieStateHandler.BrowserSessionGeneration previousGeneration =
+                    cookieHandler.createBrowserSessionGeneration();
+
+            try (HttpClientResponse response = WebClient.builder()
+                    .baseUri(rpBaseUri(rpServer))
+                    .build()
+                    .post("/oidc/logout")
+                    .followRedirects(false)
+                    .header(HeaderNames.ORIGIN, sameOrigin(rpServer))
+                    .header(HeaderNames.COOKIE, cookieHeader(session, authenticationRequest) + "; "
+                            + previousGeneration.cookie().name() + "=" + previousGeneration.cookie().value())
+                    .request()) {
+                assertThat(response.status(), is(Status.NO_CONTENT_204));
+                assertThat(response.headers().contains(HeaderNames.LOCATION), is(false));
+                List<String> cookies = response.headers().get(HeaderNames.SET_COOKIE).allValues();
+                assertRemovalCookie(cookies, session.name());
+                assertRemovalCookie(cookies, authenticationRequest.name());
+                SetCookie generation = assertBrowserSessionGenerationCookie(cookies, tenant, "default");
+                assertThat(cookieHandler.readBrowserSessionGeneration(generation.value()).orElseThrow()
+                                   .equals(previousGeneration.value()), is(false));
+            }
+        } finally {
+            rpServer.stop();
+        }
+    }
+
+    @Test
     void logoutEndpointRouteRemovesLocalAuthenticationCookies() {
         OidcTenantConfig tenant = tenantConfigWithLogout();
         WebServer rpServer = oidcFeatureServer(providerConfig(tenant));
